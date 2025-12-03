@@ -17,10 +17,10 @@ interface FilterBarProps {
         direction: 'asc' | 'desc';
     };
     options: {
-        workAreas: string[];
-        neighborhoods: string[];
-        shelterModels: string[];
-        riskAreas: string[];
+        workAreas: { value: string; count: number }[];
+        neighborhoods: { value: string; count: number }[];
+        shelterModels: { value: string; count: number }[];
+        riskAreas: { value: string; count: number }[];
     };
     onFilterChange: (key: string, value: any) => void;
     onSortChange: (field: string) => void;
@@ -105,22 +105,33 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         </div>
 
                         <div className={`flex items-center space-x-2 ${isMobile ? 'w-full justify-between bg-gray-50 p-2 rounded-lg' : ''}`}>
-                            <span className="text-sm text-gray-500">Ordenar por:</span>
                             <div className="flex items-center space-x-2">
-                                <select
-                                    value={sort.field}
-                                    onChange={(e) => onSortChange(e.target.value)}
-                                    className="text-sm border-gray-300 border rounded-md py-1.5 pl-3 pr-8 focus:ring-eletro-orange focus:border-eletro-orange bg-white"
-                                >
-                                    <option value="">Padrão</option>
-                                    <option value="Nº Eletro">ID</option>
-                                    <option value="Bairro">Bairro</option>
-                                    <option value="Modelo de Abrigo">Modelo</option>
-                                </select>
+                                <div className="w-40">
+                                    <MultiSelectDropdown
+                                        label="Ordenar"
+                                        icon={<SortAsc className="h-4 w-4" />}
+                                        options={["Padrão", "ID", "Bairro", "Modelo"]}
+                                        selected={
+                                            sort.field === "Nº Eletro" ? ["ID"] :
+                                                sort.field === "Bairro" ? ["Bairro"] :
+                                                    sort.field === "Modelo de Abrigo" ? ["Modelo"] :
+                                                        ["Padrão"]
+                                        }
+                                        onChange={(val) => {
+                                            const selectedLabel = val[0];
+                                            let field = "";
+                                            if (selectedLabel === "ID") field = "Nº Eletro";
+                                            else if (selectedLabel === "Bairro") field = "Bairro";
+                                            else if (selectedLabel === "Modelo") field = "Modelo de Abrigo";
+                                            onSortChange(field);
+                                        }}
+                                        singleSelect={true}
+                                    />
+                                </div>
                                 <button
                                     onClick={() => onSortChange(sort.field)}
                                     disabled={!sort.field}
-                                    className={`p-1.5 rounded-md border ${!sort.field ? 'text-gray-300 border-gray-200' : 'text-gray-600 border-gray-300 hover:bg-gray-100 bg-white'}`}
+                                    className={`p-2 rounded-md border transition-colors ${!sort.field ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-600 border-gray-300 hover:bg-gray-100 bg-white'}`}
                                 >
                                     {sort.direction === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
                                 </button>
@@ -171,8 +182,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         <button
                             onClick={() => onFilterChange('hasPhoto', !filters.hasPhoto)}
                             className={`flex items-center justify-center px-4 py-2 border rounded-md text-sm font-medium transition-colors ${filters.hasPhoto
-                                    ? 'bg-eletro-orange text-white border-eletro-orange'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                ? 'bg-eletro-orange text-white border-eletro-orange'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                                 }`}
                         >
                             <Image className={`w-4 h-4 mr-2 ${filters.hasPhoto ? 'text-white' : 'text-gray-500'}`} />

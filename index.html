@@ -20,6 +20,20 @@
               black: '#1A1A1A',
               gray: '#F3F4F6',
             }
+          },
+          keyframes: {
+            slideInFromTop: {
+              '0%': { transform: 'translateY(-10px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' },
+            },
+            slideOutToTop: {
+              '0%': { transform: 'translateY(0)', opacity: '1' },
+              '100%': { transform: 'translateY(-10px)', opacity: '0' },
+            },
+          },
+          animation: {
+            'slide-in': 'slideInFromTop 0.2s ease-out forwards',
+            'slide-out': 'slideOutToTop 0.2s ease-in forwards',
           }
         }
       }

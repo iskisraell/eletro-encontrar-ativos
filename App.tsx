@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchEquipment } from './services/api';
+import { db } from './services/db';
 import { Equipment } from './types';
 import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
@@ -16,9 +17,18 @@ function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<Equipment | null>(null);
+  const observerTarget = React.useRef<HTMLDivElement>(null);
+
+  // Search Optimization State
+  const [fullDataCache, setFullDataCache] = useState<Equipment[]>([]);
+  const [isCacheReady, setIsCacheReady] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Filter Visibility State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // Pagination State (Client-side)
+  const [visibleCount, setVisibleCount] = useState(24);
 
   // Filter & Sort State
   const [filters, setFilters] = useState({
@@ -34,15 +44,33 @@ function App() {
     direction: 'asc' as 'asc' | 'desc',
   });
 
-  // Initial load logic (Scenario B: Bulk Sync - limit 1000 for better client-side filtering)
+  // Initial load logic (IndexedDB + Background Sync)
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
       try {
-        const { data: results, total: totalCount } = await fetchEquipment({ start: 0, limit: 1000 });
-        setData(results);
-        setTotal(totalCount);
+        await db.init();
+        const cachedData = await db.getAll();
+
+        if (cachedData.length > 0) {
+          setData(cachedData);
+          setFullDataCache(cachedData);
+          setTotal(cachedData.length);
+          setLoading(false);
+        }
+
+        // Start Background Sync if needed
+        const { total: apiTotal } = await fetchEquipment({ start: 0, limit: 1 });
+
+        if (cachedData.length < apiTotal) {
+          setIsSyncing(true);
+          syncData(cachedData.length, apiTotal);
+        } else {
+          setIsCacheReady(true);
+        }
+
       } catch (err) {
+        console.error(err);
         setError('Não foi possível carregar os dados iniciais. Tente buscar algo.');
       } finally {
         setLoading(false);
@@ -51,57 +79,127 @@ function App() {
     loadInitialData();
   }, []);
 
+  const syncData = async (startOffset: number, totalItems: number) => {
+    let currentOffset = startOffset;
+    const chunkSize = 1000;
+
+    try {
+      while (currentOffset < totalItems) {
+        const { data: chunk } = await fetchEquipment({ start: currentOffset, limit: chunkSize });
+        if (chunk.length === 0) break;
+
+        await db.saveChunk(chunk);
+
+        setFullDataCache(prev => {
+          // Deduplicate using a Map based on "Nº Eletro"
+          const uniqueMap = new Map();
+
+          // Add existing items
+          prev.forEach(item => {
+            if (item["Nº Eletro"]) uniqueMap.set(item["Nº Eletro"], item);
+          });
+
+          // Add/Update with new items
+          chunk.forEach(item => {
+            if (item["Nº Eletro"]) uniqueMap.set(item["Nº Eletro"], item);
+          });
+
+          const newData = Array.from(uniqueMap.values());
+
+          // Update main display data if it was empty
+          if (prev.length === 0) {
+            setData(newData);
+            setTotal(newData.length);
+          }
+
+          return newData;
+        });
+
+        currentOffset += chunkSize;
+      }
+
+      // Final Validation
+      const finalCount = await db.count();
+      if (finalCount !== totalItems) {
+        console.warn(`Mismatch detected: DB has ${finalCount}, API expects ${totalItems}. Triggering full reload...`);
+        // Optional: Force a re-sync or just update the total visual
+        setTotal(finalCount);
+      } else {
+        setTotal(finalCount);
+      }
+
+      setIsCacheReady(true);
+      setIsSyncing(false);
+    } catch (e) {
+      console.error("Background sync failed", e);
+      setIsSyncing(false);
+    }
+  };
+
   // Debounced search logic (Scenario A: Specific Search)
+  // Debounced search logic
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (query.trim().length > 1) {
         setLoading(true);
         setError(null);
-        try {
-          // Using Scenario A: Direct Search
-          const { data: results, total: totalCount } = await fetchEquipment({ q: query });
+
+        if (isCacheReady) {
+          // Local Search
+          const lowerQuery = query.toLowerCase();
+          const results = fullDataCache.filter(item =>
+            (item["Nº Eletro"] && item["Nº Eletro"].toLowerCase().includes(lowerQuery)) ||
+            (item["Endereço"] && item["Endereço"].toLowerCase().includes(lowerQuery)) ||
+            (item["Modelo de Abrigo"] && item["Modelo de Abrigo"].toLowerCase().includes(lowerQuery))
+          );
           setData(results);
-          setTotal(totalCount);
+          setTotal(results.length);
+          setLoading(false);
           if (results.length === 0) {
             setError(`Nenhum resultado encontrado para "${query}"`);
           }
-        } catch (err) {
-          setError('Erro ao realizar a busca. Verifique sua conexão.');
-        } finally {
-          setLoading(false);
+        } else {
+          // API Fallback
+          try {
+            const { data: results, total: totalCount } = await fetchEquipment({ q: query });
+            setData(results);
+            setTotal(totalCount);
+            if (results.length === 0) {
+              setError(`Nenhum resultado encontrado para "${query}"`);
+            }
+          } catch (err) {
+            setError('Erro ao realizar a busca. Verifique sua conexão.');
+          } finally {
+            setLoading(false);
+          }
         }
       } else if (query.trim() === '') {
-        // If query cleared, reload initial data to reset the view (Scenario B)
-        setLoading(true);
-        try {
-          const { data: results, total: totalCount } = await fetchEquipment({ start: 0, limit: 1000 });
-          setData(results);
-          setTotal(totalCount);
-          setError(null);
-        } catch (e) {
-          // ignore
-        } finally {
-          setLoading(false);
+        // Reset to full view
+        if (isCacheReady) {
+          setData(fullDataCache);
+          setTotal(fullDataCache.length);
+        } else {
+          // If not ready, maybe we have partial data in fullDataCache?
+          // Or we just show what we have.
+          setData(fullDataCache);
+          setTotal(fullDataCache.length);
         }
+        setLoading(false);
       }
-    }, 600); // 600ms debounce
+    }, 600);
 
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, isCacheReady, fullDataCache]);
 
-  const handleLoadMore = async () => {
-    if (loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const currentLength = data.length;
-      const { data: newResults, total: totalCount } = await fetchEquipment({ start: currentLength, limit: 100 });
 
-      setData(prev => [...prev, ...newResults]);
-      setTotal(totalCount);
-    } catch (err) {
-      console.error("Erro ao carregar mais itens:", err);
-    } finally {
-      setLoadingMore(false);
+
+  const handleLogoClick = () => {
+    if (window.matchMedia('(min-width: 768px)').matches) {
+      // Desktop: Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      // Mobile: Toggle filter
+      setIsFilterOpen(!isFilterOpen);
     }
   };
 
@@ -115,25 +213,53 @@ function App() {
 
   // Extract unique options for filters
   const filterOptions = useMemo(() => {
-    const workAreas = new Set<string>();
-    const neighborhoods = new Set<string>();
-    const shelterModels = new Set<string>();
-    const riskAreas = new Set<string>();
+    // Helper to filter data excluding specific keys (to determine options for that key)
+    const getFilteredData = (excludeKey: string) => {
+      return data.filter(item => {
+        if (excludeKey !== 'workArea' && filters.workArea.length > 0) {
+          if (!item["Área de Trabalho"] || !filters.workArea.includes(item["Área de Trabalho"])) return false;
+        }
+        if (excludeKey !== 'neighborhood' && filters.neighborhood.length > 0) {
+          if (!item["Bairro"] || !filters.neighborhood.includes(item["Bairro"])) return false;
+        }
+        if (excludeKey !== 'shelterModel' && filters.shelterModel.length > 0) {
+          if (!item["Modelo de Abrigo"] || !filters.shelterModel.includes(item["Modelo de Abrigo"])) return false;
+        }
+        if (excludeKey !== 'riskArea' && filters.riskArea.length > 0) {
+          if (!item["Área de Risco"] || !filters.riskArea.includes(item["Área de Risco"])) return false;
+        }
+        if (excludeKey !== 'hasPhoto' && filters.hasPhoto) {
+          if (!item["Foto Referência"] || item["Foto Referência"].length === 0) return false;
+        }
+        return true;
+      });
+    };
 
-    data.forEach(item => {
-      if (item["Área de Trabalho"]) workAreas.add(item["Área de Trabalho"]);
-      if (item["Bairro"]) neighborhoods.add(item["Bairro"]);
-      if (item["Modelo de Abrigo"]) shelterModels.add(item["Modelo de Abrigo"]);
-      if (item["Área de Risco"]) riskAreas.add(item["Área de Risco"]);
-    });
+    const countOccurrences = (items: Equipment[], key: keyof Equipment) => {
+      const counts = new Map<string, number>();
+      items.forEach(item => {
+        const value = item[key];
+        if (typeof value === 'string' && value) {
+          counts.set(value, (counts.get(value) || 0) + 1);
+        }
+      });
+      return Array.from(counts.entries())
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value.localeCompare(b.value));
+    };
+
+    const workAreas = countOccurrences(getFilteredData('workArea'), "Área de Trabalho");
+    const neighborhoods = countOccurrences(getFilteredData('neighborhood'), "Bairro");
+    const shelterModels = countOccurrences(getFilteredData('shelterModel'), "Modelo de Abrigo");
+    const riskAreas = countOccurrences(getFilteredData('riskArea'), "Área de Risco");
 
     return {
-      workAreas: Array.from(workAreas).sort(),
-      neighborhoods: Array.from(neighborhoods).sort(),
-      shelterModels: Array.from(shelterModels).sort(),
-      riskAreas: Array.from(riskAreas).sort(),
+      workAreas,
+      neighborhoods,
+      shelterModels,
+      riskAreas,
     };
-  }, [data]);
+  }, [data, filters]);
 
   // Filter and Sort Logic
   const filteredAndSortedData = useMemo(() => {
@@ -173,6 +299,40 @@ function App() {
     return result;
   }, [data, filters, sort]);
 
+  const handleLoadMore = () => {
+    setVisibleCount(prev => prev + 24);
+  };
+
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && !loading && !error && visibleCount < filteredAndSortedData.length) {
+          handleLoadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => {
+      if (observerTarget.current) {
+        observer.unobserve(observerTarget.current);
+      }
+    };
+  }, [loading, error, visibleCount, filteredAndSortedData.length]);
+
+  // Reset pagination when filters or sort change
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [filters, sort, query]);
+
+  // Slice data for display
+  const visibleData = filteredAndSortedData.slice(0, visibleCount);
+
   const handleFilterChange = (key: string, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
@@ -201,7 +361,7 @@ function App() {
   };
 
   // Determine if we should show Load More button:
-  const showLoadMore = !loading && !error && query.trim() === '' && data.length > 0 && data.length < total;
+  const showLoadMore = !loading && !error && visibleCount < filteredAndSortedData.length;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20">
@@ -212,7 +372,7 @@ function App() {
           <div className="flex flex-row items-center justify-between py-4 gap-4">
 
             {/* Logo Area */}
-            <div className="flex items-center self-start md:self-auto cursor-pointer" onClick={() => setIsFilterOpen(!isFilterOpen)}>
+            <div className="flex items-center self-start md:self-auto cursor-pointer" onClick={handleLogoClick}>
               {/* Desktop Logo */}
               <img
                 src={desktopLogo}
@@ -228,8 +388,8 @@ function App() {
             </div>
 
             {/* Search Bar */}
-            <div className="flex-1 md:w-1/2 relative">
-              <div className="relative group">
+            <div className="flex-1 md:w-1/2 relative flex items-center gap-4">
+              <div className="relative group flex-1">
                 <input
                   type="text"
                   value={query}
@@ -244,6 +404,23 @@ function App() {
                     <SpinnerIcon className="text-eletro-orange w-5 h-5" />
                   </div>
                 )}
+              </div>
+
+              {/* Total Count Badge */}
+              <div className="hidden md:flex flex-col items-end min-w-max">
+                <div className="flex items-center gap-2">
+                  {(loading || isSyncing) && (
+                    <div className="flex space-x-1">
+                      <div className="w-1.5 h-1.5 bg-eletro-orange rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                      <div className="w-1.5 h-1.5 bg-eletro-orange rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-1.5 h-1.5 bg-eletro-orange rounded-full animate-bounce"></div>
+                    </div>
+                  )}
+                  <span className="text-2xl font-bold text-eletro-orange leading-none">
+                    {filteredAndSortedData.length}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">Equipamentos</span>
               </div>
             </div>
 
@@ -289,7 +466,7 @@ function App() {
 
         {/* Results Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredAndSortedData.map((item, index) => {
+          {visibleData.map((item, index) => {
             // Create a unique key fallback
             const key = item["Nº Eletro"] || index.toString();
             return (
@@ -304,42 +481,34 @@ function App() {
 
         {/* Loading Skeleton for Initial Load */}
         {loading && data.length === 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => (
               <div key={i} className="bg-white h-80 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="h-48 bg-gray-200"></div>
+                <div className="h-48 shimmer"></div>
                 <div className="p-4 space-y-3">
-                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-8 bg-gray-200 rounded w-full mt-4"></div>
+                  <div className="h-4 shimmer rounded w-3/4"></div>
+                  <div className="h-4 shimmer rounded w-1/2"></div>
+                  <div className="h-8 shimmer rounded w-full mt-4"></div>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Load More Button */}
+        {/* Load More Button & Sentinel */}
         {showLoadMore && (
-          <div className="mt-12 flex justify-center">
+          <div className="mt-12 flex flex-col items-center justify-center">
             <button
               onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="group relative flex items-center justify-center px-8 py-3 bg-white border-2 border-gray-200 text-gray-700 font-semibold rounded-full hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
+              className="group relative flex items-center justify-center px-8 py-3 bg-white border-2 border-gray-200 text-gray-700 font-semibold rounded-full hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
             >
-              {loadingMore ? (
-                <>
-                  <SpinnerIcon className="w-5 h-5 mr-2" />
-                  Carregando...
-                </>
-              ) : (
-                <>
-                  Carregar Mais
-                  <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
-                    ({data.length} de {total})
-                  </span>
-                </>
-              )}
+              Carregar Mais
+              <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
+                ({visibleCount} de {filteredAndSortedData.length} exibidos)
+              </span>
             </button>
+            {/* Sentinel for Infinite Scroll */}
+            <div ref={observerTarget} className="h-4 w-full"></div>
           </div>
         )}
 
