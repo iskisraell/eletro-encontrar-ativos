@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { cn, formatNumber } from '../../lib/utils';
-import { fadeInUp } from '../../lib/animations';
+import { fadeInUp, spring } from '../../lib/animations';
 
 interface StatsCardProps {
     title: string;
@@ -99,7 +99,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
     return (
         <motion.div
             className={cn(
-                'rounded-xl p-6 shadow-sm overflow-hidden relative',
+                'rounded-xl p-6 shadow-sm hover:shadow-xl transition-shadow duration-300 cursor-pointer overflow-hidden relative',
                 styles.container,
                 className
             )}
@@ -108,6 +108,8 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             animate="animate"
             custom={delay}
             transition={{ delay: delay * 0.1 }}
+            whileHover={{ y: -4, transition: spring.stiff }}
+            whileTap={{ scale: 0.98 }}
         >
             <div className="flex items-start justify-between">
                 <div className="space-y-1">

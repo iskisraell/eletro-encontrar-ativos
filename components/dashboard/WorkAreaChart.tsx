@@ -15,6 +15,7 @@ import { ChartData } from '../../hooks/useDashboardStats';
 import { formatNumber } from '../../lib/utils';
 import { MapPin } from 'lucide-react';
 import { ActiveFilterChips } from '../ui/ActiveFilterChip';
+import { useIsDark } from '../../hooks/useDarkMode';
 
 interface WorkAreaChartProps {
     data: ChartData[];
@@ -54,7 +55,9 @@ export const WorkAreaChart: React.FC<WorkAreaChartProps> = ({
     selectedValues = [],
     onFilterChange
 }) => {
+    const isDark = useIsDark();
     const hasActiveFilter = selectedValues.length > 0;
+    const axisColor = isDark ? '#9CA3AF' : '#374151'; // gray-400 : gray-700
 
     const handleBarClick = (data: any) => {
         if (onFilterChange && data?.name) {
@@ -97,7 +100,7 @@ export const WorkAreaChart: React.FC<WorkAreaChartProps> = ({
                             tickFormatter={(value) => formatNumber(value)}
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fill: '#6B7280', fontSize: 12 }}
+                            tick={{ fill: axisColor, fontSize: 12 }}
                         />
                         <YAxis
                             type="category"
@@ -105,7 +108,7 @@ export const WorkAreaChart: React.FC<WorkAreaChartProps> = ({
                             width={120}
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fill: '#374151', fontSize: 12 }}
+                            tick={{ fill: axisColor, fontSize: 12 }}
                         />
                         <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 103, 0, 0.1)' }} />
                         <Bar

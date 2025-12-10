@@ -15,6 +15,7 @@ import { ChartData } from '../../hooks/useDashboardStats';
 import { formatNumber, percentage } from '../../lib/utils';
 import { Zap } from 'lucide-react';
 import { ActiveFilterChips } from '../ui/ActiveFilterChip';
+import { useIsDark } from '../../hooks/useDarkMode';
 
 interface FeaturesChartProps {
     data: ChartData[];
@@ -61,7 +62,10 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
     activeFeatures = [],
     onFeatureClick
 }) => {
+    const isDark = useIsDark();
     const hasActiveFilter = activeFeatures.length > 0;
+    const axisColor = isDark ? '#9CA3AF' : '#374151'; // gray-400 : gray-700
+    const tickColor = isDark ? '#D1D5DB' : '#4B5563'; // gray-300 : gray-600
 
     const handleBarClick = (entry: any) => {
         if (onFeatureClick && entry?.name) {
@@ -103,12 +107,12 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
                         data={data}
                         margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                     >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#f0f0f0'} vertical={false} />
                         <XAxis
                             dataKey="name"
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fill: '#374151', fontSize: 11 }}
+                            tick={{ fill: axisColor, fontSize: 11 }}
                             interval={0}
                             angle={-45}
                             textAnchor="end"
@@ -118,9 +122,9 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
                             tickFormatter={(value) => formatNumber(value)}
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fill: '#6B7280', fontSize: 12 }}
+                            tick={{ fill: axisColor, fontSize: 12 }}
                         />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }} />
                         <Bar
                             dataKey="value"
                             radius={[4, 4, 0, 0]}
@@ -163,7 +167,7 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
                                 backgroundColor: `${feature.fill}15`,
                                 color: feature.fill,
                                 opacity: shouldDim ? 0.4 : 1,
-                                ringColor: isActive ? feature.fill : 'transparent',
+                                // ringColor is not a valid style prop, handled by class if needed
                             }}
                             onClick={() => handleBadgeClick(feature.name)}
                             whileHover={onFeatureClick ? { scale: 1.05 } : {}}

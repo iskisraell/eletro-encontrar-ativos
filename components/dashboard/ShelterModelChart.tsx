@@ -13,6 +13,7 @@ import { ChartData } from '../../hooks/useDashboardStats';
 import { formatNumber } from '../../lib/utils';
 import { Building } from 'lucide-react';
 import { ActiveFilterChips } from '../ui/ActiveFilterChip';
+import { useIsDark } from '../../hooks/useDarkMode';
 
 interface ShelterModelChartProps {
     data: ChartData[];
@@ -101,6 +102,7 @@ export const ShelterModelChart: React.FC<ShelterModelChartProps> = ({
     selectedValues = [],
     onFilterChange
 }) => {
+    const isDark = useIsDark();
     // Filter out items with very small values for better visualization
     const significantData = data.filter(item => item.value > 0).slice(0, 8);
     const hasActiveFilter = selectedValues.length > 0;
@@ -162,7 +164,7 @@ export const ShelterModelChart: React.FC<ShelterModelChartProps> = ({
                                         <Cell
                                             key={`cell-${index}`}
                                             fill={COLORS[index % COLORS.length]}
-                                            stroke="white"
+                                            stroke={isDark ? '#1f2937' : 'white'}
                                             strokeWidth={isSelected ? 3 : 2}
                                             opacity={shouldDim ? 0.3 : 1}
                                             style={{

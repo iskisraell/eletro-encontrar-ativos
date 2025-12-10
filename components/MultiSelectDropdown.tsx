@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Square, CheckSquare, Search } from 'lucide-react';
 
+// GLOBAL STATE: Track which dropdown is currently active by its label.
+// This persists across component unmounts/remounts (refreshes).
+let activeDropdownLabel: string | null = null;
+
 interface MultiSelectDropdownProps {
     label: string;
     icon: React.ReactNode;
@@ -19,7 +23,8 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     onChange,
     singleSelect = false,
 }) => {
-    const [isOpen, setIsOpen] = useState(false);
+    // Initialize open state based on the global tracker
+    const [isOpen, setIsOpen] = useState(label === activeDropdownLabel);
     const [isClosing, setIsClosing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 256 });
@@ -72,6 +77,10 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
 
     const closeDropdown = () => {
         if (isOpen) {
+            // Explicit close: Clear the global tracker
+            if (activeDropdownLabel === label) {
+                activeDropdownLabel = null;
+            }
             setIsClosing(true);
             setTimeout(() => {
                 setIsOpen(false);
@@ -85,6 +94,8 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         if (isOpen) {
             closeDropdown();
         } else {
+            // Open: Set this dropdown as the active one
+            activeDropdownLabel = label;
             setIsOpen(true);
         }
     };
@@ -97,7 +108,10 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                 buttonRef.current && !buttonRef.current.contains(target) &&
                 dropdownRef.current && !dropdownRef.current.contains(target)
             ) {
-                closeDropdown();
+                // If we click outside and this was the active one, close it
+                if (isOpen) {
+                    closeDropdown();
+                }
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -163,6 +177,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     const dropdownContent = (isOpen || isClosing) && createPortal(
         <div
             ref={dropdownRef}
+            onMouseDown={(e) => e.stopPropagation()}
             className={`fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl max-h-96 flex flex-col ${animationClass}`}
             style={{
                 top: dropdownPosition.top,

@@ -26,9 +26,6 @@ export function useDarkMode() {
         } else {
             root.classList.remove('dark');
         }
-
-        // Persist to localStorage
-        localStorage.setItem('darkMode', String(isDark));
     }, [isDark]);
 
     // Listen for system preference changes
@@ -47,7 +44,13 @@ export function useDarkMode() {
         return () => mediaQuery.removeEventListener('change', handleChange);
     }, []);
 
-    const toggle = () => setIsDark(prev => !prev);
+    const toggle = () => {
+        setIsDark(prev => {
+            const newValue = !prev;
+            localStorage.setItem('darkMode', String(newValue));
+            return newValue;
+        });
+    };
 
     return { isDark, setIsDark, toggle };
 }

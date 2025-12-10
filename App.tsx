@@ -10,6 +10,7 @@ import TabNavigation from './components/TabNavigation';
 import DarkModeToggle from './components/DarkModeToggle';
 import { Dashboard } from './components/dashboard';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
+import AnimatedPlaceholder from './components/AnimatedPlaceholder';
 import { spring } from './lib/animations';
 import { useDarkMode } from './hooks/useDarkMode';
 import desktopLogo from './assets/Eletromidia Horizontal (3).png';
@@ -167,7 +168,8 @@ function App() {
             (item["Nº Eletro"] && String(item["Nº Eletro"]).toLowerCase().includes(lowerQuery)) ||
             (item["Nº Parada"] && String(item["Nº Parada"]).toLowerCase().includes(lowerQuery)) ||
             (item["Endereço"] && String(item["Endereço"]).toLowerCase().includes(lowerQuery)) ||
-            (item["Modelo de Abrigo"] && String(item["Modelo de Abrigo"]).toLowerCase().includes(lowerQuery))
+            (item["Modelo de Abrigo"] && String(item["Modelo de Abrigo"]).toLowerCase().includes(lowerQuery)) ||
+            (item["Bairro"] && String(item["Bairro"]).toLowerCase().includes(lowerQuery))
           );
           setData(results);
           setTotal(results.length);
@@ -473,9 +475,13 @@ function App() {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar por ID, Nº Parada, Endereço ou Modelo..."
+                  placeholder=""
                   className="w-full bg-gray-100 dark:bg-gray-800 border-2 border-transparent focus:bg-white dark:focus:bg-gray-700 focus:border-eletro-orange rounded-full py-3 pl-12 pr-4 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-all duration-300 shadow-inner"
                 />
+                {/* Animated Placeholder Overlay */}
+                {!query && (
+                  <AnimatedPlaceholder className="absolute left-12 top-1/2 -translate-y-1/2 pointer-events-none" />
+                )}
                 <SearchIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-eletro-orange transition-colors w-5 h-5" />
 
                 {loading && (

@@ -14,6 +14,7 @@ import { ChartData } from '../../hooks/useDashboardStats';
 import { formatNumber } from '../../lib/utils';
 import { Home } from 'lucide-react';
 import { ActiveFilterChips } from '../ui/ActiveFilterChip';
+import { useIsDark } from '../../hooks/useDarkMode';
 
 interface NeighborhoodChartProps {
     data: ChartData[];
@@ -51,9 +52,12 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
     selectedValues = [],
     onFilterChange
 }) => {
+    const isDark = useIsDark();
     // Take top 10 neighborhoods
     const topData = data.slice(0, 10);
     const hasActiveFilter = selectedValues.length > 0;
+    const axisColor = isDark ? '#9CA3AF' : '#374151'; // gray-400 : gray-700
+    const tickColor = isDark ? '#D1D5DB' : '#4B5563'; // gray-300 : gray-600
 
     const handleBarClick = (data: any) => {
         if (onFilterChange && data?.name) {
@@ -96,7 +100,7 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
                             tickFormatter={(value) => formatNumber(value)}
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fill: '#6B7280', fontSize: 12 }}
+                            tick={{ fill: axisColor, fontSize: 12 }}
                         />
                         <YAxis
                             type="category"
@@ -104,10 +108,10 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
                             width={100}
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fill: '#374151', fontSize: 11 }}
+                            tick={{ fill: axisColor, fontSize: 11 }}
                             tickFormatter={(value) => value.length > 15 ? value.slice(0, 15) + '...' : value}
                         />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 103, 0, 0.1)' }} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255, 103, 0, 0.1)' : 'rgba(255, 103, 0, 0.1)' }} />
                         <Bar
                             dataKey="value"
                             radius={[0, 4, 4, 0]}

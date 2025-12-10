@@ -12,6 +12,7 @@ import { ChartData } from '../../hooks/useDashboardStats';
 import { formatNumber } from '../../lib/utils';
 import { GitBranch } from 'lucide-react';
 import { ActiveFilterChips } from '../ui/ActiveFilterChip';
+import { useIsDark } from '../../hooks/useDarkMode';
 
 interface BranchChartProps {
     data: ChartData[];
@@ -49,6 +50,7 @@ export const BranchChart: React.FC<BranchChartProps> = ({
     selectedValues = [],
     onFilterChange
 }) => {
+    const isDark = useIsDark();
     const total = data.reduce((sum, item) => sum + item.value, 0);
     const hasActiveFilter = selectedValues.length > 0;
 
@@ -110,7 +112,7 @@ export const BranchChart: React.FC<BranchChartProps> = ({
                                         <Cell
                                             key={`cell-${index}`}
                                             fill={COLORS[index % COLORS.length]}
-                                            stroke="white"
+                                            stroke={isDark ? '#1f2937' : 'white'}
                                             strokeWidth={isSelected ? 3 : 2}
                                             opacity={shouldDim ? 0.3 : 1}
                                             style={{

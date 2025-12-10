@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
-import { fadeInUp } from '../../lib/animations';
+import { fadeInUp, spring } from '../../lib/animations';
 
 interface ChartCardProps {
     title: string;
@@ -44,7 +44,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
     return (
         <motion.div
             className={cn(
-                'rounded-xl p-6 shadow-sm',
+                'rounded-xl p-6 shadow-sm hover:shadow-xl transition-shadow duration-300 cursor-pointer',
                 styles.container,
                 className
             )}
@@ -52,6 +52,8 @@ export const ChartCard: React.FC<ChartCardProps> = ({
             initial="initial"
             animate="animate"
             transition={{ delay: delay * 0.1 }}
+            whileHover={{ y: -4, transition: spring.stiff }}
+            whileTap={{ scale: 0.98 }}
         >
             {/* Header */}
             <div className="flex items-start justify-between mb-6">

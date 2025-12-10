@@ -21,6 +21,18 @@ body {
     font-family: 'Rethink Sans', sans-serif;
 }
 
+/* Hide caret globally */
+* {
+    caret-color: transparent;
+}
+
+/* Show caret only on focused text inputs */
+input:focus,
+textarea:focus,
+[contenteditable="true"]:focus {
+    caret-color: auto;
+}
+
 @layer utilities {
     .shimmer {
         background: linear-gradient(90deg,

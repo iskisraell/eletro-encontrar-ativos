@@ -200,3 +200,27 @@ export const noInitialAnimation: Variants = {
     animate: {},
     exit: {}
 };
+
+// Vertical swap animation for placeholder cycling
+// Vertical swap animation for placeholder cycling - Springy with overshoot
+export const verticalSwap: Variants = {
+    initial: { y: 25, opacity: 0 },
+    animate: {
+        y: 0,
+        opacity: 1,
+        transition: {
+            type: "spring",
+            stiffness: 150,
+            damping: 12,
+            mass: 0.8, // Slightly lighter for snappiness
+        }
+    },
+    exit: {
+        y: -25,
+        opacity: 0,
+        transition: {
+            duration: 0.2,
+            ease: "easeIn" // Smooth exit without bounce
+        }
+    }
+};
