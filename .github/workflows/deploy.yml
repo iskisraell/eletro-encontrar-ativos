@@ -33,11 +33,10 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # If your build process needs these, they should be set as secrets in the repo
-          # VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
-          # For now, we assume the build doesn't strictly fail without them, 
-          # but the app might need them at runtime.
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Build-time environment variables
+          NODE_ENV: production
+          # API keys are runtime-only (loaded via .env.local in prod)
+          # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
