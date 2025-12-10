@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { fetchEquipment } from './services/api';
 import { db } from './services/db';
 import { Equipment } from './types';
 import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
 import FilterBar from './components/FilterBar';
+import TabNavigation from './components/TabNavigation';
+import DarkModeToggle from './components/DarkModeToggle';
+import { Dashboard } from './components/dashboard';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
+import { spring } from './lib/animations';
+import { useDarkMode } from './hooks/useDarkMode';
 import desktopLogo from './assets/Eletromidia Horizontal (3).png';
 import mobileLogo from './assets/LOGOELETRO.png';
 
@@ -27,6 +33,12 @@ function App() {
   // Filter Visibility State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list');
+
+  // Dark Mode
+  const { isDark, toggle: toggleDarkMode } = useDarkMode();
+
   // Pagination State (Client-side)
   const [visibleCount, setVisibleCount] = useState(24);
 
@@ -43,6 +55,10 @@ function App() {
     field: '',
     direction: 'asc' as 'asc' | 'desc',
   });
+
+  // Hidden feature filters - only accessible via FeaturesChart clicks
+  // Maps feature display names to their selected state
+  const [featureFilters, setFeatureFilters] = useState<string[]>([]);
 
   // Initial load logic (IndexedDB + Background Sync)
   useEffect(() => {
@@ -148,9 +164,10 @@ function App() {
           // Local Search
           const lowerQuery = query.toLowerCase();
           const results = fullDataCache.filter(item =>
-            (item["Nº Eletro"] && item["Nº Eletro"].toLowerCase().includes(lowerQuery)) ||
-            (item["Endereço"] && item["Endereço"].toLowerCase().includes(lowerQuery)) ||
-            (item["Modelo de Abrigo"] && item["Modelo de Abrigo"].toLowerCase().includes(lowerQuery))
+            (item["Nº Eletro"] && String(item["Nº Eletro"]).toLowerCase().includes(lowerQuery)) ||
+            (item["Nº Parada"] && String(item["Nº Parada"]).toLowerCase().includes(lowerQuery)) ||
+            (item["Endereço"] && String(item["Endereço"]).toLowerCase().includes(lowerQuery)) ||
+            (item["Modelo de Abrigo"] && String(item["Modelo de Abrigo"]).toLowerCase().includes(lowerQuery))
           );
           setData(results);
           setTotal(results.length);
@@ -282,6 +299,33 @@ function App() {
       result = result.filter(item => item["Foto Referência"] && item["Foto Referência"].length > 0);
     }
 
+    // Apply hidden feature filters (from FeaturesChart only)
+    // Uses OR logic: equipment matches if it has ANY of the selected features
+    if (featureFilters.length > 0) {
+      result = result.filter(item => {
+        return featureFilters.some(feature => {
+          switch (feature) {
+            case 'Wi-Fi':
+              return item['Wi-Fi'] === 'Sim';
+            case 'Câmera':
+              return item['Câmera'] === 'Sim';
+            case 'Painel Digital':
+              // Check for any non-empty, non-dash value (API uses '1', '2', etc.)
+              return item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
+            case 'Painel Estático':
+              // Check "Painel Estático - Tipo" field per API structure
+              return item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
+            case 'Luminária':
+              return item['Luminária'] === 'Sim';
+            case 'Energizado':
+              return item['Energizado'] === 'Sim';
+            default:
+              return false;
+          }
+        });
+      });
+    }
+
     // 2. Sort
     if (sort.field) {
       result.sort((a, b) => {
@@ -297,7 +341,7 @@ function App() {
     }
 
     return result;
-  }, [data, filters, sort]);
+  }, [data, filters, sort, featureFilters]);
 
   const handleLoadMore = () => {
     setVisibleCount(prev => prev + 24);
@@ -360,14 +404,49 @@ function App() {
     setSort({ field: '', direction: 'asc' });
   };
 
+  /**
+   * Handle chart element clicks - implements toggle behavior
+   * If value is already in the filter array → remove it
+   * If value is not in the filter array → add it
+   */
+  const handleChartFilterChange = (filterKey: string, value: string) => {
+    setFilters(prev => {
+      const currentValues = prev[filterKey as keyof typeof prev];
+
+      if (Array.isArray(currentValues)) {
+        const isSelected = currentValues.includes(value);
+        const newValues = isSelected
+          ? currentValues.filter(v => v !== value)
+          : [...currentValues, value];
+
+        return { ...prev, [filterKey]: newValues };
+      }
+
+      return prev;
+    });
+  };
+
+  /**
+   * Handle feature chart clicks - toggle feature filters
+   * These filters are hidden (not in FilterBar) and only accessible via FeaturesChart
+   */
+  const handleFeatureFilterChange = (featureName: string) => {
+    setFeatureFilters(prev => {
+      const isSelected = prev.includes(featureName);
+      return isSelected
+        ? prev.filter(f => f !== featureName)
+        : [...prev, featureName];
+    });
+  };
+
   // Determine if we should show Load More button:
   const showLoadMore = !loading && !error && visibleCount < filteredAndSortedData.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
 
       {/* Sticky Header & Search */}
-      <div className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <div className="sticky top-0 z-30 bg-white/90 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-row items-center justify-between py-4 gap-4">
 
@@ -394,8 +473,8 @@ function App() {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar por ID (ex: A02970), Endereço ou Modelo..."
-                  className="w-full bg-gray-100 border-2 border-transparent focus:bg-white focus:border-eletro-orange rounded-full py-3 pl-12 pr-4 text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 shadow-inner"
+                  placeholder="Buscar por ID, Nº Parada, Endereço ou Modelo..."
+                  className="w-full bg-gray-100 dark:bg-gray-800 border-2 border-transparent focus:bg-white dark:focus:bg-gray-700 focus:border-eletro-orange rounded-full py-3 pl-12 pr-4 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-all duration-300 shadow-inner"
                 />
                 <SearchIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-eletro-orange transition-colors w-5 h-5" />
 
@@ -420,15 +499,25 @@ function App() {
                     {filteredAndSortedData.length}
                   </span>
                 </div>
-                <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">Equipamentos</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Equipamentos</span>
               </div>
+
+              {/* Dark Mode Toggle */}
+              <DarkModeToggle isDark={isDark} onToggle={toggleDarkMode} />
             </div>
 
           </div>
+
+          {/* Tab Navigation */}
+          <TabNavigation
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            className="pb-4"
+          />
         </div>
       </div>
 
-      {/* Filter Bar */}
+      {/* Filter Bar - Always visible for filtering both views */}
       <FilterBar
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
@@ -440,78 +529,91 @@ function App() {
         onClearFilters={clearFilters}
       />
 
-      {/* Main Content */}
+      {/* Main Content - Both tabs stay mounted to preserve state */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* Status/Error Messages */}
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded mb-6 flex items-start animate-fade-in">
-            <AlertIcon className="text-red-500 w-5 h-5 mr-3 mt-0.5" />
-            <div>
-              <p className="text-red-700 font-medium">Ops, algo deu errado.</p>
-              <p className="text-red-600 text-sm">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && filteredAndSortedData.length === 0 && (
-          <div className="text-center py-20">
-            <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <SearchIcon className="text-gray-400 w-8 h-8" />
-            </div>
-            <h3 className="text-gray-600 font-medium text-lg">Nenhum equipamento encontrado</h3>
-            <p className="text-gray-400">Tente ajustar seus filtros ou buscar por outro termo.</p>
-          </div>
-        )}
-
-        {/* Results Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {visibleData.map((item, index) => {
-            // Create a unique key fallback
-            const key = item["Nº Eletro"] || index.toString();
-            return (
-              <EquipmentCard
-                key={key}
-                item={item}
-                onClick={handleCardClick}
-              />
-            );
-          })}
+        {/* Dashboard Tab Content */}
+        <div className={activeTab === 'dashboard' ? 'block' : 'hidden'}>
+          <Dashboard
+            equipment={filteredAndSortedData}
+            isLoading={loading && data.length === 0}
+            filters={filters}
+            onChartFilterChange={handleChartFilterChange}
+            featureFilters={featureFilters}
+            onFeatureFilterChange={handleFeatureFilterChange}
+          />
         </div>
 
-        {/* Loading Skeleton for Initial Load */}
-        {loading && data.length === 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="bg-white h-80 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="h-48 shimmer"></div>
-                <div className="p-4 space-y-3">
-                  <div className="h-4 shimmer rounded w-3/4"></div>
-                  <div className="h-4 shimmer rounded w-1/2"></div>
-                  <div className="h-8 shimmer rounded w-full mt-4"></div>
-                </div>
+        {/* Equipment List Tab Content */}
+        <div className={activeTab === 'list' ? 'block' : 'hidden'}>
+          {/* Status/Error Messages */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 p-4 rounded mb-6 flex items-start animate-fade-in">
+              <AlertIcon className="text-red-500 w-5 h-5 mr-3 mt-0.5" />
+              <div>
+                <p className="text-red-700 dark:text-red-300 font-medium">Ops, algo deu errado.</p>
+                <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Load More Button & Sentinel */}
-        {showLoadMore && (
-          <div className="mt-12 flex flex-col items-center justify-center">
-            <button
-              onClick={handleLoadMore}
-              className="group relative flex items-center justify-center px-8 py-3 bg-white border-2 border-gray-200 text-gray-700 font-semibold rounded-full hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
-            >
-              Carregar Mais
-              <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
-                ({visibleCount} de {filteredAndSortedData.length} exibidos)
-              </span>
-            </button>
-            {/* Sentinel for Infinite Scroll */}
-            <div ref={observerTarget} className="h-4 w-full"></div>
-          </div>
-        )}
+          {!loading && !error && filteredAndSortedData.length === 0 && (
+            <div className="text-center py-20">
+              <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <SearchIcon className="text-gray-400 w-8 h-8" />
+              </div>
+              <h3 className="text-gray-600 dark:text-gray-300 font-medium text-lg">Nenhum equipamento encontrado</h3>
+              <p className="text-gray-400 dark:text-gray-500">Tente ajustar seus filtros ou buscar por outro termo.</p>
+            </div>
+          )}
 
+          {/* Results Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {visibleData.map((item, index) => {
+              // Create a unique key fallback
+              const key = item["Nº Eletro"] || index.toString();
+              return (
+                <EquipmentCard
+                  key={key}
+                  item={item}
+                  onClick={handleCardClick}
+                />
+              );
+            })}
+          </div>
+
+          {/* Loading Skeleton for Initial Load */}
+          {loading && data.length === 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-gray-800 h-80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                  <div className="h-48 shimmer"></div>
+                  <div className="p-4 space-y-3">
+                    <div className="h-4 shimmer rounded w-3/4"></div>
+                    <div className="h-4 shimmer rounded w-1/2"></div>
+                    <div className="h-8 shimmer rounded w-full mt-4"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Load More Button & Sentinel */}
+          {showLoadMore && (
+            <div className="mt-12 flex flex-col items-center justify-center">
+              <button
+                onClick={handleLoadMore}
+                className="group relative flex items-center justify-center px-8 py-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-full hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
+              >
+                Carregar Mais
+                <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
+                  ({visibleCount} de {filteredAndSortedData.length} exibidos)
+                </span>
+              </button>
+              {/* Sentinel for Infinite Scroll */}
+              <div ref={observerTarget} className="h-4 w-full"></div>
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Detail Panel (Modal/Slide-over) */}

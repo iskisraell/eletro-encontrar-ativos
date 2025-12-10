@@ -1,5 +1,6 @@
 export interface Equipment {
   "Nº Eletro"?: string;
+  "Nº Parada"?: string;
   "Endereço"?: string;
   "Foto Referência"?: string;
   "Cidade"?: string;

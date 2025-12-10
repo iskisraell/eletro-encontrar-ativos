@@ -9,6 +9,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
@@ -40,12 +41,21 @@
     }
   </script>
   <style>
+    /* Light mode defaults */
     body {
       background-color: #F3F4F6;
       color: #1A1A1A;
+      transition: background-color 0.3s ease, color 0.3s ease;
     }
 
-    /* Custom scrollbar for webkit */
+    /* Dark mode styles */
+    .dark body,
+    html.dark body {
+      background-color: #111827;
+      color: #F9FAFB;
+    }
+
+    /* Custom scrollbar for webkit - Light mode */
     ::-webkit-scrollbar {
       width: 8px;
       height: 8px;
@@ -62,6 +72,15 @@
 
     ::-webkit-scrollbar-thumb:hover {
       background: #9CA3AF;
+    }
+
+    /* Dark mode scrollbar */
+    .dark ::-webkit-scrollbar-thumb {
+      background: #4B5563;
+    }
+
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: #6B7280;
     }
   </style>
   <script type="importmap">
