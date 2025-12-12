@@ -98,7 +98,7 @@ function App() {
 
   const syncData = async (startOffset: number, totalItems: number) => {
     let currentOffset = startOffset;
-    const chunkSize = 1000;
+    const chunkSize = 5000; // API v4.0 supports up to 5000 per request
 
     try {
       while (currentOffset < totalItems) {

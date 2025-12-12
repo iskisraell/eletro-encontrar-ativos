@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Square, CheckSquare, Search } from 'lucide-react';
 
@@ -23,10 +23,15 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     onChange,
     singleSelect = false,
 }) => {
+    // Check if this dropdown should auto-open (was active before refresh)
+    const wasActiveBeforeRefresh = label === activeDropdownLabel;
+
     // Initialize open state based on the global tracker
-    const [isOpen, setIsOpen] = useState(label === activeDropdownLabel);
+    const [isOpen, setIsOpen] = useState(wasActiveBeforeRefresh);
     const [isClosing, setIsClosing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    // Skip animation when reopening after a refresh/selection (not user-initiated)
+    const [skipAnimation, setSkipAnimation] = useState(wasActiveBeforeRefresh);
     const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 256 });
     const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -39,8 +44,9 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         );
     }, [options]);
 
-    // Update dropdown position when opening
-    useEffect(() => {
+    // Update dropdown position when opening - useLayoutEffect prevents flash
+    // by running synchronously before browser paint
+    useLayoutEffect(() => {
         if (isOpen && buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
             setDropdownPosition({
@@ -96,6 +102,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         } else {
             // Open: Set this dropdown as the active one
             activeDropdownLabel = label;
+            setSkipAnimation(false); // User-initiated open should animate
             setIsOpen(true);
         }
     };
@@ -163,7 +170,8 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     const isAllSelected = !singleSelect && filteredOptions.length > 0 && filteredOptions.every(opt => selected.includes(opt.value));
     const isPartiallySelected = !singleSelect && filteredOptions.some(opt => selected.includes(opt.value)) && !isAllSelected;
 
-    const animationClass = isClosing ? 'animate-slide-out' : 'animate-slide-in';
+    // Skip animation when reopening after refresh, otherwise use normal animation
+    const animationClass = isClosing ? 'animate-slide-out' : (skipAnimation ? '' : 'animate-slide-in');
 
     const getButtonLabel = () => {
         if (singleSelect && selected.length === 1) {
