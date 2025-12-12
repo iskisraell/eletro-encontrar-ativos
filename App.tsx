@@ -153,13 +153,14 @@ function App() {
     }
   };
 
-  // Debounced search logic (Scenario A: Specific Search)
   // Debounced search logic
   useEffect(() => {
+    // Clear error immediately when query changes
+    setError(null);
+
     const timer = setTimeout(async () => {
       if (query.trim().length > 1) {
         setLoading(true);
-        setError(null);
 
         if (isCacheReady) {
           // Local Search
@@ -553,12 +554,11 @@ function App() {
         <div className={activeTab === 'list' ? 'block' : 'hidden'}>
           {/* Status/Error Messages */}
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 p-4 rounded mb-6 flex items-start animate-fade-in">
-              <AlertIcon className="text-red-500 w-5 h-5 mr-3 mt-0.5" />
-              <div>
-                <p className="text-red-700 dark:text-red-300 font-medium">Ops, algo deu errado.</p>
-                <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+            <div className="bg-red-50/80 dark:bg-red-900/20 backdrop-blur-sm px-5 py-3 rounded-2xl mb-6 flex items-center gap-3 animate-fade-in shadow-sm border border-red-100 dark:border-red-800/30">
+              <div className="flex-shrink-0 w-8 h-8 bg-red-100 dark:bg-red-800/40 rounded-full flex items-center justify-center">
+                <AlertIcon className="text-red-500 dark:text-red-400 w-4 h-4" />
               </div>
+              <p className="text-red-600 dark:text-red-300 text-sm font-medium">{error}</p>
             </div>
           )}
 
