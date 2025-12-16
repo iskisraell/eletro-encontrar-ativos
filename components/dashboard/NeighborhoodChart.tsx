@@ -24,7 +24,7 @@ interface NeighborhoodChartProps {
 }
 
 // Gradient colors
-const COLORS = ['#FF6700', '#FF7E1F', '#FF953D', '#FFAC5A', '#FFC378', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#E6E6E6', '#F0F0F0'];
+const COLORS = ['#ff4f00', '#FF7E1F', '#FF953D', '#FFAC5A', '#FFC378', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#E6E6E6', '#F0F0F0'];
 
 // Custom tooltip
 const CustomTooltip = ({ active, payload }: any) => {
@@ -82,7 +82,7 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
                     <ActiveFilterChips
                         values={selectedValues}
                         onRemove={handleRemoveFilter}
-                        color="#FF6700"
+                        color="#ff4f00"
                     />
                 )
             }
@@ -111,7 +111,7 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
                             tick={{ fill: axisColor, fontSize: 11 }}
                             tickFormatter={(value) => value.length > 15 ? value.slice(0, 15) + '...' : value}
                         />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255, 103, 0, 0.1)' : 'rgba(255, 103, 0, 0.1)' }} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255, 79, 0, 0.1)' : 'rgba(255, 79, 0, 0.1)' }} />
                         <Bar
                             dataKey="value"
                             radius={[0, 4, 4, 0]}
@@ -122,7 +122,7 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
                             {topData.map((entry, index) => {
                                 const isSelected = selectedValues.includes(entry.name);
                                 const shouldDim = hasActiveFilter && !isSelected;
-                                const baseColor = index === 0 ? '#FF6700' : index < 3 ? '#1A1A1A' : '#6B7280';
+                                const baseColor = index === 0 ? '#ff4f00' : index < 3 ? '#1A1A1A' : '#6B7280';
 
                                 return (
                                     <Cell

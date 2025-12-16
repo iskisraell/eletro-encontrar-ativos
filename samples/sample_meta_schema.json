@@ -1,0 +1,14 @@
+﻿{
+    "features":  [
+                     "filtering",
+                     "pagination",
+                     "search",
+                     "caching",
+                     "geospatial"
+                 ],
+    "version":  "4.0",
+    "description":  "API de Ativos Eletromidia",
+    "totalRecords":  22038,
+    "endpoint":  "?start=0\u0026limit=1",
+    "documentation":  "https://script.google.com/macros/s/AKfycbzXpzgaA64P147rIqeaLEkCZ4YQcz5rJOn89Ag8Pf3p8EIg0Beisa9dS0OL-UEOsIWL/exec"
+}

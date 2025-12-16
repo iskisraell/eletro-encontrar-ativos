@@ -8,6 +8,7 @@ export interface FilterState {
     shelterModel: string[];
     riskArea: string[];
     hasPhoto: boolean;
+    panelType: string[]; // 'digital', 'static', 'none'
 }
 
 // Sort state type
@@ -78,6 +79,7 @@ const defaultFilters: FilterState = {
     shelterModel: [],
     riskArea: [],
     hasPhoto: false,
+    panelType: [],
 };
 
 // Default sort state
@@ -212,16 +214,20 @@ export const useEquipmentStore = create<EquipmentStore>((set, get) => ({
             );
         }
 
-        // Apply sort
+// Apply sort
         if (state.sort.field) {
             result.sort((a, b) => {
-                const aValue = a[state.sort.field] || '';
-                const bValue = b[state.sort.field] || '';
+                const aValue = a[state.sort.field];
+                const bValue = b[state.sort.field];
+                
+                // Convert to strings for comparison
+                const aStr = aValue != null ? String(aValue) : '';
+                const bStr = bValue != null ? String(bValue) : '';
 
                 if (state.sort.direction === 'asc') {
-                    return aValue.localeCompare(bValue);
+                    return aStr.localeCompare(bStr);
                 } else {
-                    return bValue.localeCompare(aValue);
+                    return bStr.localeCompare(aStr);
                 }
             });
         }

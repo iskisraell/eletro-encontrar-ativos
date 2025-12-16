@@ -122,3 +122,21 @@ export const hasValue = (value: string | number | undefined): boolean => {
     const trimmed = value.trim();
     return trimmed !== '' && trimmed !== '-' && trimmed !== 'N/A';
 };
+
+/**
+ * Check if equipment is an Abrigo (shelter) - can have panels
+ * Abrigos have "A" prefix in "Nº Eletro"
+ */
+export const isAbrigo = (equipment: { "Nº Eletro"?: string }): boolean => {
+    const nEletro = equipment["Nº Eletro"];
+    return typeof nEletro === 'string' && nEletro.toUpperCase().startsWith('A');
+};
+
+/**
+ * Check if equipment is a TOTEM - cannot have panels
+ * TOTEMs have "T" prefix in "Nº Eletro"
+ */
+export const isTotem = (equipment: { "Nº Eletro"?: string }): boolean => {
+    const nEletro = equipment["Nº Eletro"];
+    return typeof nEletro === 'string' && nEletro.toUpperCase().startsWith('T');
+};

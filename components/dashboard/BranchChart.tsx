@@ -22,7 +22,7 @@ interface BranchChartProps {
 }
 
 // Color palette for branches
-const COLORS = ['#FF6700', '#1A1A1A', '#6B7280', '#3B82F6', '#10B981'];
+const COLORS = ['#ff4f00', '#1A1A1A', '#6B7280', '#3B82F6', '#10B981'];
 
 // Custom tooltip
 const CustomTooltip = ({ active, payload }: any) => {
@@ -83,7 +83,7 @@ export const BranchChart: React.FC<BranchChartProps> = ({
                     <ActiveFilterChips
                         values={selectedValues}
                         onRemove={handleRemoveFilter}
-                        color="#FF6700"
+                        color="#ff4f00"
                     />
                 )
             }
@@ -117,7 +117,7 @@ export const BranchChart: React.FC<BranchChartProps> = ({
                                             opacity={shouldDim ? 0.3 : 1}
                                             style={{
                                                 transition: 'opacity 0.3s ease-in-out, stroke-width 0.2s ease',
-                                                filter: isSelected ? 'drop-shadow(0 0 4px rgba(255, 103, 0, 0.5))' : 'none',
+                                                filter: isSelected ? 'drop-shadow(0 0 4px rgba(255, 79, 0, 0.5))' : 'none',
                                             }}
                                         />
                                     );

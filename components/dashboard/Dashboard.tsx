@@ -9,10 +9,11 @@ import {
     Lightbulb,
     Zap,
     CheckCircle,
-    Image
+    Image,
+    PanelTop
 } from 'lucide-react';
 import { Equipment } from '../../types';
-import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { useDashboardStats, DIGITAL_PANEL_COLOR, STATIC_PANEL_COLOR } from '../../hooks/useDashboardStats';
 import { staggerContainer, fadeInUp } from '../../lib/animations';
 import { StatsCard } from './StatsCard';
 import { WorkAreaChart } from './WorkAreaChart';
@@ -20,6 +21,9 @@ import { NeighborhoodChart } from './NeighborhoodChart';
 import { ShelterModelChart } from './ShelterModelChart';
 import { FeaturesChart } from './FeaturesChart';
 import { BranchChart } from './BranchChart';
+import { PanelDistributionChart } from './PanelDistributionChart';
+import { PanelsByShelterChart } from './PanelsByShelterChart';
+import { PanelsByAreaChart } from './PanelsByAreaChart';
 import { SkeletonStatsCard, SkeletonChart } from '../ui/Skeleton';
 
 interface DashboardProps {
@@ -47,7 +51,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
     featureFilters = [],
     onFeatureFilterChange
 }) => {
-    const { stats, byWorkArea, byNeighborhood, byShelterModel, byBranch, featureDistribution } = useDashboardStats(equipment);
+    const { 
+        stats, 
+        byWorkArea, 
+        byNeighborhood, 
+        byShelterModel, 
+        byBranch, 
+        featureDistribution,
+        panelDistribution,
+        panelsByShelterModel,
+        panelsByWorkArea
+    } = useDashboardStats(equipment);
 
     if (isLoading) {
         return (
@@ -217,6 +231,47 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     onFeatureClick={onFeatureFilterChange}
                 />
             </div>
+
+            {/* MUBIS Panel Analysis Section */}
+            <motion.div variants={fadeInUp} className="mt-8">
+                {/* Section Header */}
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-eletro-orange/20 to-pink-500/20 flex items-center justify-center">
+                        <PanelTop className="w-5 h-5 text-eletro-orange" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">Análise de Painéis</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Distribuição de painéis digitais e estáticos
+                        </p>
+                    </div>
+                </div>
+
+                {/* Panel Charts Row 1 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    {/* Panel Distribution (Donut) */}
+                    <PanelDistributionChart
+                        data={panelDistribution}
+                        totalDigital={stats.totalDigitalPanels}
+                        totalStatic={stats.totalStaticPanels}
+                        delay={13}
+                    />
+
+                    {/* Panels by Shelter Model (Stacked Bar) */}
+                    <PanelsByShelterChart
+                        data={panelsByShelterModel}
+                        delay={14}
+                    />
+                </div>
+
+                {/* Panel Charts Row 2 - Full Width */}
+                <div className="grid grid-cols-1">
+                    <PanelsByAreaChart
+                        data={panelsByWorkArea}
+                        delay={15}
+                    />
+                </div>
+            </motion.div>
 
             {/* Insights Section */}
             <motion.div

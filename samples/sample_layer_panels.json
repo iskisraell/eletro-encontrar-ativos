@@ -1,0 +1,41 @@
+{
+  "status": "success",
+  "meta": {
+    "apiVersion": "5.0.0",
+    "layer": "panels",
+    "count": 0,
+    "total": 0,
+    "cached": false,
+    "cacheExpires": "2025-12-15T19:04:51.282Z",
+    "executionTimeMs": 1522
+  },
+  "links": {
+    "self": "?start=0&limit=3",
+    "first": "?start=0&limit=3",
+    "last": "?start=0&limit=3"
+  },
+  "count": 0,
+  "total": 0,
+  "data": [],
+  "_note": "This layer returns panels data indexed by Nº Eletro. When panel data exists, each record contains the following structure:",
+  "_exampleRecord": {
+    "Nº Eletro": "A01516",
+    "digital": {
+      "boxes": 1,
+      "faces": 1,
+      "position": "90°",
+      "type": "SIMPLES"
+    },
+    "static": {
+      "boxes": 2,
+      "faces": 2,
+      "position": "180°",
+      "type": "SUSPENSO"
+    },
+    "shelterModel": "CAOS LEVE",
+    "observation": null,
+    "hasDigital": true,
+    "hasStatic": true,
+    "totalPanels": 3
+  }
+}

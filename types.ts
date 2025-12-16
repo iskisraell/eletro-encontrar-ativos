@@ -1,6 +1,29 @@
+// Panel detail data (from full/panels layer)
+export interface PanelDetails {
+  boxes: number;
+  faces: number;
+  position: string;
+  type: string;
+}
+
+// Panel data object (from panels/full layer)
+export interface PanelData {
+  digital?: PanelDetails;
+  static?: PanelDetails;
+  shelterModel: string | null;
+  observation: string | null;
+  hasDigital: boolean;
+  hasStatic: boolean;
+  totalPanels: number;
+}
+
+// API layer types
+export type ApiLayer = 'main' | 'panels' | 'full' | 'summary';
+
+// Base equipment interface
 export interface Equipment {
   "Nº Eletro"?: string;
-  "Nº Parada"?: string;
+  "Nº Parada"?: string | number;
   "Endereço"?: string;
   "Foto Referência"?: string;
   "Cidade"?: string;
@@ -8,7 +31,33 @@ export interface Equipment {
   "CEP"?: string;
   "Modelo"?: string;
   "Tipo"?: string;
-  [key: string]: string | undefined; // Allow for other dynamic columns from GSheet
+  "Área de Trabalho"?: string;
+  "Modelo de Abrigo"?: string;
+  "Status"?: string;
+  "Filial"?: string;
+  "Área de Risco"?: string;
+  "Wi-Fi"?: string;
+  "Câmera"?: string;
+  "Painel Digital"?: string;
+  "Painel Digital - Tipo"?: string;
+  "Painel Digital - Posição"?: string;
+  "Painel Estático"?: string;
+  "Painel Estático - Tipo"?: string;
+  "Painel Estático - Posição"?: string;
+  "Luminária"?: string;
+  "Energizado"?: string;
+  "Latitude"?: number | string;
+  "Longitude"?: number | string;
+  // Summary layer panel fields (when using layer=summary)
+  digitalPanels?: number;
+  staticPanels?: number;
+  totalPanels?: number;
+  hasDigital?: boolean;
+  hasStatic?: boolean;
+  shelterModel?: string | null;
+  // Full layer panel object (when using layer=full)
+  panels?: PanelData | null;
+  [key: string]: string | number | boolean | PanelData | null | undefined; // Allow for other dynamic columns
 }
 
 export interface ApiResponse {
@@ -39,6 +88,9 @@ export interface SearchParams {
   lat?: number;           // Geospatial: latitude
   lon?: number;           // Geospatial: longitude
   radius?: number;        // Geospatial: radius in km
+  layer?: ApiLayer;       // Data layer: main, panels, full, summary
+  hasDigital?: boolean;   // Filter by has digital panels
+  hasStatic?: boolean;    // Filter by has static panels
 }
 
 // Custom error for rate limiting

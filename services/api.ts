@@ -1,14 +1,16 @@
-import { ApiResponse, Equipment, SearchParams, RateLimitError } from '../types';
+import { ApiResponse, Equipment, SearchParams, RateLimitError, ApiLayer } from '../types';
 
 const API_BASE = "https://script.google.com/macros/s/AKfycbzXpzgaA64P147rIqeaLEkCZ4YQcz5rJOn89Ag8Pf3p8EIg0Beisa9dS0OL-UEOsIWL/exec";
 
 /**
- * Fetches equipment data from the Ativos API v4.0.
+ * Fetches equipment data from the Ativos API v5.0.
  * 
  * Features:
  * - Pagination: start/limit (max 5000) or cursor via `after`
  * - Filters: q (search), status, cidade, estado, bairro
  * - Geospatial: lat, lon, radius (km)
+ * - Data Layers: main (default), panels, full, summary
+ * - Panel Filters: hasDigital, hasStatic
  * - Rate limit handling with automatic retry
  * 
  * @returns Data array, total count, and cached indicator
@@ -22,6 +24,11 @@ export const fetchEquipment = async (params: SearchParams): Promise<{
 
   // Required: docs=false to get JSON data instead of documentation
   url.searchParams.append('docs', 'false');
+
+  // Data layer selection (default: main for backward compatibility)
+  if (params.layer) {
+    url.searchParams.append('layer', params.layer);
+  }
 
   // Search query
   if (params.q) {
@@ -51,6 +58,14 @@ export const fetchEquipment = async (params: SearchParams): Promise<{
   }
   if (params.bairro) {
     url.searchParams.append('bairro', params.bairro);
+  }
+
+  // Panel filters (available on panels, full, summary layers)
+  if (params.hasDigital !== undefined) {
+    url.searchParams.append('hasDigital', params.hasDigital.toString());
+  }
+  if (params.hasStatic !== undefined) {
+    url.searchParams.append('hasStatic', params.hasStatic.toString());
   }
 
   // Geospatial search

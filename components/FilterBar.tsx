@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
+import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronUp, ChevronDown, PanelTop } from 'lucide-react';
 import MultiSelectDropdown from './MultiSelectDropdown';
 import { spring } from '../lib/animations';
 
@@ -13,6 +13,7 @@ interface FilterBarProps {
         shelterModel: string[];
         riskArea: string[];
         hasPhoto: boolean;
+        panelType: string[];
     };
     sort: {
         field: string;
@@ -82,6 +83,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
         filters.neighborhood.length > 0 ||
         filters.shelterModel.length > 0 ||
         filters.riskArea.length > 0 ||
+        filters.panelType.length > 0 ||
         filters.hasPhoto;
 
     // Filter content component (shared between mobile and desktop)
@@ -178,7 +180,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                         style={{ overflow: 'visible' }}
                     >
-                        <div className={`grid gap-3 ${isMobile ? 'grid-cols-1 mt-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 mt-4'}`}>
+                        <div className={`grid gap-3 ${isMobile ? 'grid-cols-1 mt-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 mt-4'}`}>
                             {/* Área de Trabalho */}
                             <MultiSelectDropdown
                                 label="Área de Trabalho"
@@ -213,6 +215,26 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 options={options.riskAreas}
                                 selected={filters.riskArea}
                                 onChange={(val) => onFilterChange('riskArea', val)}
+                            />
+
+                            {/* Tipo de Painel */}
+                            <MultiSelectDropdown
+                                label="Painéis"
+                                icon={<PanelTop className="h-4 w-4" />}
+                                options={[
+                                    { value: 'digital', count: 0 },
+                                    { value: 'static', count: 0 },
+                                    { value: 'none', count: 0 }
+                                ].map(opt => ({
+                                    value: opt.value === 'digital' ? 'Painel Digital' : opt.value === 'static' ? 'Painel Estático' : 'Sem Painéis',
+                                    count: opt.count
+                                }))}
+                                selected={filters.panelType.map(t => 
+                                    t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis'
+                                )}
+                                onChange={(val) => onFilterChange('panelType', val.map(v =>
+                                    v === 'Painel Digital' ? 'digital' : v === 'Painel Estático' ? 'static' : 'none'
+                                ))}
                             />
 
                             {/* Contém Foto */}

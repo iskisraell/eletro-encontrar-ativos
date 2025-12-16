@@ -1,0 +1,75 @@
+{
+  "apiVersion": "5.0.0",
+  "layers": [
+    {
+      "id": "main",
+      "name": "Ativos Principais",
+      "source": {
+        "sheetId": "1e1cvseL1_S0Kyr-DFPa-tFsS2rVGZ7qqvBku51jhmbE",
+        "tab": "Pontos não SEP"
+      },
+      "joinKey": "Nº Eletro",
+      "secondaryJoinKey": "Nº Parada",
+      "cacheDuration": 300,
+      "isDefault": true
+    },
+    {
+      "id": "panels",
+      "name": "Painéis",
+      "source": {
+        "sheetId": "19aG4aS4iH42vbVwi6JJ9aKuhYQmXQ2fMcOSRWl7ochY",
+        "tab": "Pontos não SEP"
+      },
+      "joinKey": "Nº Eletro",
+      "secondaryJoinKey": "Nº Parada",
+      "cacheDuration": 600,
+      "isDefault": false
+    },
+    {
+      "id": "full",
+      "name": "Dados Completos (Main + Panels)",
+      "type": "merged",
+      "merges": ["main", "panels"],
+      "joinKey": "Nº Eletro"
+    },
+    {
+      "id": "summary",
+      "name": "Resumo com Contagem de Painéis",
+      "type": "aggregated",
+      "base": "main",
+      "enrichedWith": ["panels"]
+    }
+  ],
+  "defaultLayer": "main",
+  "availableFilters": {
+    "main": ["status", "cidade", "estado", "bairro", "area", "praca", "filial"],
+    "panels": ["hasDigital", "hasStatic", "modelo"],
+    "full": [
+      "status",
+      "cidade",
+      "estado",
+      "bairro",
+      "area",
+      "praca",
+      "filial",
+      "hasDigital",
+      "hasStatic",
+      "modelo"
+    ],
+    "summary": [
+      "status",
+      "cidade",
+      "estado",
+      "bairro",
+      "area",
+      "praca",
+      "filial",
+      "hasDigital",
+      "hasStatic",
+      "modelo"
+    ]
+  },
+  "meta": {
+    "executionTimeMs": 0
+  }
+}

@@ -15,7 +15,7 @@ interface ActiveFilterChipProps {
 export const ActiveFilterChip: React.FC<ActiveFilterChipProps> = ({
     label,
     onClear,
-    color = '#FF6700' // Default to eletro-orange
+    color = '#ff4f00' // Default to eletro-orange
 }) => {
     return (
         <motion.div
@@ -63,7 +63,7 @@ export const ActiveFilterChips: React.FC<ActiveFilterChipsProps> = ({
     values,
     onRemove,
     onClearAll,
-    color = '#FF6700',
+    color = '#ff4f00',
     maxVisible = 3,
 }) => {
     if (values.length === 0) return null;

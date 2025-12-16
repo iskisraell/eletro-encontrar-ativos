@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { fetchEquipment } from './services/api';
 import { db } from './services/db';
 import { Equipment } from './types';
+import { isAbrigo } from './schemas/equipment';
 import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
 import FilterBar from './components/FilterBar';
@@ -50,6 +51,7 @@ function App() {
     shelterModel: [] as string[],
     riskArea: [] as string[],
     hasPhoto: false,
+    panelType: [] as string[], // 'digital', 'static', 'none'
   });
 
   const [sort, setSort] = useState({
@@ -251,6 +253,20 @@ function App() {
         if (excludeKey !== 'hasPhoto' && filters.hasPhoto) {
           if (!item["Foto Referência"] || item["Foto Referência"].length === 0) return false;
         }
+        if (excludeKey !== 'panelType' && filters.panelType.length > 0) {
+          // Only Abrigos can have panels - exclude TOTEMs from panel filter matching
+          if (!isAbrigo(item)) return false;
+          
+          const hasDigital = item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
+          const hasStatic = item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
+          const matchesAny = filters.panelType.some(type => {
+            if (type === 'digital') return hasDigital;
+            if (type === 'static') return hasStatic;
+            if (type === 'none') return !hasDigital && !hasStatic;
+            return false;
+          });
+          if (!matchesAny) return false;
+        }
         return true;
       });
     };
@@ -302,6 +318,34 @@ function App() {
       result = result.filter(item => item["Foto Referência"] && item["Foto Referência"].length > 0);
     }
 
+    // Panel Type Filter
+    // Only applies to Abrigos (shelters) - TOTEMs cannot have panels
+    // Uses OR logic: equipment matches if it has ANY of the selected panel types
+    if (filters.panelType.length > 0) {
+      result = result.filter(item => {
+        // Only Abrigos can have panels - exclude TOTEMs from panel filters
+        if (!isAbrigo(item)) return false;
+        
+        return filters.panelType.some(type => {
+          switch (type) {
+            case 'digital':
+              // Has digital panel
+              return item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
+            case 'static':
+              // Has static panel
+              return item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
+            case 'none':
+              // Abrigos without panels
+              const hasDigital = item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
+              const hasStatic = item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
+              return !hasDigital && !hasStatic;
+            default:
+              return false;
+          }
+        });
+      });
+    }
+
     // Apply hidden feature filters (from FeaturesChart only)
     // Uses OR logic: equipment matches if it has ANY of the selected features
     if (featureFilters.length > 0) {
@@ -313,11 +357,11 @@ function App() {
             case 'Câmera':
               return item['Câmera'] === 'Sim';
             case 'Painel Digital':
-              // Check for any non-empty, non-dash value (API uses '1', '2', etc.)
-              return item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
+              // Only Abrigos can have panels - check for any non-empty, non-dash value
+              return isAbrigo(item) && item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
             case 'Painel Estático':
-              // Check "Painel Estático - Tipo" field per API structure
-              return item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
+              // Only Abrigos can have panels - check "Painel Estático - Tipo" field per API structure
+              return isAbrigo(item) && item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
             case 'Luminária':
               return item['Luminária'] === 'Sim';
             case 'Energizado':
@@ -332,13 +376,17 @@ function App() {
     // 2. Sort
     if (sort.field) {
       result.sort((a, b) => {
-        const aValue = a[sort.field] || '';
-        const bValue = b[sort.field] || '';
+        const aValue = a[sort.field];
+        const bValue = b[sort.field];
+        
+        // Convert to strings for comparison
+        const aStr = aValue != null ? String(aValue) : '';
+        const bStr = bValue != null ? String(bValue) : '';
 
         if (sort.direction === 'asc') {
-          return aValue.localeCompare(bValue);
+          return aStr.localeCompare(bStr);
         } else {
-          return bValue.localeCompare(aValue);
+          return bStr.localeCompare(aStr);
         }
       });
     }
@@ -403,6 +451,7 @@ function App() {
       shelterModel: [],
       riskArea: [],
       hasPhoto: false,
+      panelType: [],
     });
     setSort({ field: '', direction: 'asc' });
   };

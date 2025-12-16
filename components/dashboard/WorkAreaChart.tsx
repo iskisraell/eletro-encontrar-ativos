@@ -25,7 +25,7 @@ interface WorkAreaChartProps {
 }
 
 // Color palette for bars
-const COLORS = ['#FF6700', '#1A1A1A', '#6B7280', '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
+const COLORS = ['#ff4f00', '#1A1A1A', '#6B7280', '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
 
 // Custom tooltip
 const CustomTooltip = ({ active, payload }: any) => {
@@ -82,7 +82,7 @@ export const WorkAreaChart: React.FC<WorkAreaChartProps> = ({
                     <ActiveFilterChips
                         values={selectedValues}
                         onRemove={handleRemoveFilter}
-                        color="#FF6700"
+                        color="#ff4f00"
                     />
                 )
             }

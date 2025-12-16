@@ -96,7 +96,7 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
                     <ActiveFilterChips
                         values={activeFeatures}
                         onRemove={handleRemoveFilter}
-                        color="#FF6700"
+                        color="#ff4f00"
                     />
                 )
             }
@@ -139,7 +139,7 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
                                 return (
                                     <Cell
                                         key={`cell-${index}`}
-                                        fill={entry.fill || '#FF6700'}
+                                        fill={entry.fill || '#ff4f00'}
                                         opacity={shouldDim ? 0.3 : 1}
                                         style={{
                                             transition: 'opacity 0.3s ease-in-out',
