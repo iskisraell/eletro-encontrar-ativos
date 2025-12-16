@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -37,6 +37,9 @@ jobs:
           NODE_ENV: production
           # API keys are runtime-only (loaded via .env.local in prod)
           # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Copy samples to dist
+        run: cp -r samples dist/samples
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
