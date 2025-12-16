@@ -51,16 +51,14 @@ export interface DashboardData {
 
 // Color palette for charts
 const CHART_COLORS = [
-    '#ff4f00', // Eletro orange
-    '#1A1A1A', // Black
-    '#6B7280', // Gray
-    '#3B82F6', // Blue
-    '#10B981', // Green
-    '#8B5CF6', // Purple
-    '#F59E0B', // Amber
-    '#EF4444', // Red
-    '#06B6D4', // Cyan
-    '#EC4899', // Pink
+    '#ff4f00', // Eletro orange (primary)
+    '#6342ff', // Purple (Secondary accent)
+    '#31b11c', // Green (Success)
+    '#ff8231', // Secondary orange
+    '#ff74ff', // Pink (Static panels)
+    '#1A1A1A', // Black (Dark bg/text)
+    '#dc3545', // Error red
+    '#6B7280', // Gray (Neutral)
 ];
 
 // Panel colors
@@ -253,12 +251,12 @@ export function useDashboardStats(equipment: Equipment[]): DashboardData {
 
         // Feature distribution
         const featureDistribution: ChartData[] = [
-            { name: 'Wi-Fi', value: stats.withWifi, fill: '#3B82F6' },
-            { name: 'Câmera', value: stats.withCamera, fill: '#10B981' },
+            { name: 'Wi-Fi', value: stats.withWifi, fill: '#6342ff' }, // Purple
+            { name: 'Câmera', value: stats.withCamera, fill: '#31b11c' }, // Green
             { name: 'Painel Digital', value: stats.withDigitalPanel, fill: DIGITAL_PANEL_COLOR },
             { name: 'Painel Estático', value: stats.withStaticPanel, fill: STATIC_PANEL_COLOR },
-            { name: 'Luminária', value: stats.withLighting, fill: '#F59E0B' },
-            { name: 'Energizado', value: stats.energized, fill: '#EF4444' },
+            { name: 'Luminária', value: stats.withLighting, fill: '#ff8231' }, // Secondary Orange
+            { name: 'Energizado', value: stats.energized, fill: '#dc3545' }, // Error/Red
         ].map(item => ({
             ...item,
             percentage: percentage(item.value, total),

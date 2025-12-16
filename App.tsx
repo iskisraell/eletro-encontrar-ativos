@@ -17,7 +17,10 @@ import { useDarkMode } from './hooks/useDarkMode';
 import desktopLogo from './assets/Eletromidia Horizontal (3).png';
 import mobileLogo from './assets/LOGOELETRO.png';
 
+import { useToast } from './contexts/ToastContext';
+
 function App() {
+  const { showFilterToast } = useToast();
   const [query, setQuery] = useState('');
   const [data, setData] = useState<Equipment[]>([]);
   const [total, setTotal] = useState(0);
@@ -289,11 +292,33 @@ function App() {
     const shelterModels = countOccurrences(getFilteredData('shelterModel'), "Modelo de Abrigo");
     const riskAreas = countOccurrences(getFilteredData('riskArea'), "Área de Risco");
 
+    // Calculate panel type counts based on other active filters
+    const countPanelTypes = () => {
+      const filteredData = getFilteredData('panelType').filter(isAbrigo);
+
+      const hasDigital = (item: Equipment) =>
+        item['Painel Digital'] !== undefined &&
+        item['Painel Digital'] !== '' &&
+        item['Painel Digital'] !== '-';
+
+      const hasStatic = (item: Equipment) =>
+        item['Painel Estático - Tipo'] !== undefined &&
+        item['Painel Estático - Tipo'] !== '' &&
+        item['Painel Estático - Tipo'] !== '-';
+
+      return [
+        { value: 'Painel Digital', count: filteredData.filter(hasDigital).length, key: 'digital' },
+        { value: 'Painel Estático', count: filteredData.filter(hasStatic).length, key: 'static' },
+        { value: 'Sem Painéis', count: filteredData.filter(i => !hasDigital(i) && !hasStatic(i)).length, key: 'none' },
+      ];
+    };
+
     return {
       workAreas,
       neighborhoods,
       shelterModels,
       riskAreas,
+      panelTypes: countPanelTypes(),
     };
   }, [data, filters]);
 
@@ -456,12 +481,40 @@ function App() {
     setSort({ field: '', direction: 'asc' });
   };
 
+  const handlePanelFilterChange = (displayValue: string) => {
+    // Map display name to filter key
+    const filterKey = displayValue === 'Painel Digital' ? 'digital'
+      : displayValue === 'Painel Estático' ? 'static'
+        : 'none';
+
+    // Show toast based on current state (before update)
+    const isSelected = filters.panelType.includes(filterKey);
+    showFilterToast(isSelected ? 'remove' : 'add', 'Painéis', displayValue);
+
+    setFilters(prev => {
+      // Re-calculate based on prev to ensure state consistency
+      const isSelectedInPrev = prev.panelType.includes(filterKey);
+      const newValues = isSelectedInPrev
+        ? prev.panelType.filter(v => v !== filterKey)
+        : [...prev.panelType, filterKey];
+
+      return { ...prev, panelType: newValues };
+    });
+  };
+
   /**
    * Handle chart element clicks - implements toggle behavior
    * If value is already in the filter array → remove it
    * If value is not in the filter array → add it
    */
   const handleChartFilterChange = (filterKey: string, value: string) => {
+    // Show toast based on current state (before update)
+    const currentValues = filters[filterKey as keyof typeof filters];
+    if (Array.isArray(currentValues)) {
+      const isSelected = currentValues.includes(value);
+      showFilterToast(isSelected ? 'remove' : 'add', filterKey, value);
+    }
+
     setFilters(prev => {
       const currentValues = prev[filterKey as keyof typeof prev];
 
@@ -594,6 +647,7 @@ function App() {
             isLoading={loading && data.length === 0}
             filters={filters}
             onChartFilterChange={handleChartFilterChange}
+            onPanelFilterChange={handlePanelFilterChange}
             featureFilters={featureFilters}
             onFeatureFilterChange={handleFeatureFilterChange}
           />

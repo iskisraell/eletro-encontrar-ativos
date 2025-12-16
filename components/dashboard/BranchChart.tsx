@@ -22,7 +22,16 @@ interface BranchChartProps {
 }
 
 // Color palette for branches
-const COLORS = ['#ff4f00', '#1A1A1A', '#6B7280', '#3B82F6', '#10B981'];
+const COLORS = [
+    '#ff4f00', // Primary Orange
+    '#6342ff', // Purple
+    '#31b11c', // Green
+    '#ff8231', // Secondary Orange
+    '#ff74ff', // Pink
+    '#1A1A1A', // Black
+    '#dc3545', // Error Red
+    '#6B7280', // Gray
+];
 
 // Custom tooltip
 const CustomTooltip = ({ active, payload }: any) => {

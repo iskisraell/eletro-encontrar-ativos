@@ -24,6 +24,7 @@ interface FilterBarProps {
         neighborhoods: { value: string; count: number }[];
         shelterModels: { value: string; count: number }[];
         riskAreas: { value: string; count: number }[];
+        panelTypes: { value: string; count: number; key: string }[];
     };
     onFilterChange: (key: string, value: any) => void;
     onSortChange: (field: string) => void;
@@ -221,14 +222,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                             <MultiSelectDropdown
                                 label="Painéis"
                                 icon={<PanelTop className="h-4 w-4" />}
-                                options={[
-                                    { value: 'digital', count: 0 },
-                                    { value: 'static', count: 0 },
-                                    { value: 'none', count: 0 }
-                                ].map(opt => ({
-                                    value: opt.value === 'digital' ? 'Painel Digital' : opt.value === 'static' ? 'Painel Estático' : 'Sem Painéis',
-                                    count: opt.count
-                                }))}
+                                options={options.panelTypes}
                                 selected={filters.panelType.map(t => 
                                     t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis'
                                 )}

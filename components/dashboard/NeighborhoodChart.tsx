@@ -23,9 +23,6 @@ interface NeighborhoodChartProps {
     onFilterChange?: (value: string) => void;
 }
 
-// Gradient colors
-const COLORS = ['#ff4f00', '#FF7E1F', '#FF953D', '#FFAC5A', '#FFC378', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#E6E6E6', '#F0F0F0'];
-
 // Custom tooltip
 const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {

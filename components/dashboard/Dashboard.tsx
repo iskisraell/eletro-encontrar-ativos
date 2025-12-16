@@ -35,9 +35,11 @@ interface DashboardProps {
         neighborhood: string[];
         shelterModel: string[];
         riskArea: string[];
+        panelType: string[];
     };
     // Handler to update filters when chart element is clicked
     onChartFilterChange?: (filterKey: string, value: string) => void;
+    onPanelFilterChange?: (value: string) => void;
     // Hidden feature filters - only from FeaturesChart
     featureFilters?: string[];
     onFeatureFilterChange?: (featureName: string) => void;
@@ -48,6 +50,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     isLoading = false,
     filters,
     onChartFilterChange,
+    onPanelFilterChange,
     featureFilters = [],
     onFeatureFilterChange
 }) => {
@@ -252,15 +255,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Panel Distribution (Donut) */}
                     <PanelDistributionChart
                         data={panelDistribution}
-                        totalDigital={stats.totalDigitalPanels}
-                        totalStatic={stats.totalStaticPanels}
+                        totalEquipmentWithDigital={stats.totalDigitalPanels}
+                        totalEquipmentWithStatic={stats.totalStaticPanels}
                         delay={13}
+                        selectedValues={filters?.panelType?.map(t =>
+                            t === 'digital' ? 'Digital' : t === 'static' ? 'Estático' : 'Sem Painéis'
+                        ) || []}
+                        onFilterChange={onPanelFilterChange ? (value) => {
+                             // The chart returns "Digital" or "Estático" (matching data names), 
+                             // but App expects "Painel Digital" or "Painel Estático"
+                             if (value === 'Digital') onPanelFilterChange('Painel Digital');
+                             else if (value === 'Estático') onPanelFilterChange('Painel Estático');
+                             else onPanelFilterChange(value);
+                        } : undefined}
                     />
 
                     {/* Panels by Shelter Model (Stacked Bar) */}
                     <PanelsByShelterChart
                         data={panelsByShelterModel}
                         delay={14}
+                        selectedValues={filters?.shelterModel || []}
+                        onFilterChange={onChartFilterChange ? (value) => onChartFilterChange('shelterModel', value) : undefined}
                     />
                 </div>
 
@@ -269,6 +284,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <PanelsByAreaChart
                         data={panelsByWorkArea}
                         delay={15}
+                        selectedValues={filters?.workArea || []}
+                        onFilterChange={onChartFilterChange ? (value) => onChartFilterChange('workArea', value) : undefined}
                     />
                 </div>
             </motion.div>
