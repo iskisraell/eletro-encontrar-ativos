@@ -479,6 +479,7 @@ function App() {
       panelType: [],
     });
     setSort({ field: '', direction: 'asc' });
+    setFeatureFilters([]);
   };
 
   const handlePanelFilterChange = (displayValue: string) => {
@@ -636,7 +637,10 @@ function App() {
         onFilterChange={handleFilterChange}
         onSortChange={handleSortChange}
         onClearFilters={clearFilters}
+        featureFilters={featureFilters}
+        onFeatureFilterChange={handleFeatureFilterChange}
       />
+
 
       {/* Main Content - Both tabs stay mounted to preserve state */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -711,8 +715,9 @@ function App() {
             <div className="mt-12 flex flex-col items-center justify-center">
               <button
                 onClick={handleLoadMore}
-                className="group relative flex items-center justify-center px-8 py-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-full hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
+                className="group relative flex items-center justify-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-md hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
               >
+
                 Carregar Mais
                 <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
                   ({visibleCount} de {filteredAndSortedData.length} exibidos)

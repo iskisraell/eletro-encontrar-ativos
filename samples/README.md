@@ -1,6 +1,6 @@
 # API Sample Files
 
-This directory contains sample JSON responses from the Ativos API v5.0.0 for testing and reference purposes.
+This directory contains sample JSON responses from the Ativos API v5.1.0 for testing and reference purposes.
 
 ## Sample Files Overview
 
@@ -40,11 +40,12 @@ This directory contains sample JSON responses from the Ativos API v5.0.0 for tes
 
 ## API Version
 
-All samples reflect **API v5.0.0** structure with:
+All samples reflect **API v5.1.0** structure with:
 
 - Enhanced metadata (`apiVersion`, `layer`, `cached`, `cacheExpires`, `executionTimeMs`)
 - Pagination links (`self`, `next`, `first`, `last`)
 - Total record count: **22,038** active records
+- **NEW**: `digital.brand` field for panel brand/model (BOE, CHINA, LG, etc.)
 
 ## Common Fields in Data Records
 

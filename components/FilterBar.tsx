@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronUp, ChevronDown, PanelTop } from 'lucide-react';
+import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronDown, PanelTop } from 'lucide-react';
 import MultiSelectDropdown from './MultiSelectDropdown';
-import { spring } from '../lib/animations';
 
 interface FilterBarProps {
     isOpen: boolean;
@@ -29,31 +28,20 @@ interface FilterBarProps {
     onFilterChange: (key: string, value: any) => void;
     onSortChange: (field: string) => void;
     onClearFilters: () => void;
+    featureFilters?: string[];
+    onFeatureFilterChange?: (featureName: string) => void;
 }
 
-// Animation variants for mobile sidebar
 const sidebarVariants = {
     initial: { x: '-100%' },
-    animate: {
-        x: 0,
-        transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }
-    },
-    exit: {
-        x: '-100%',
-        transition: { duration: 0.25, ease: [0.4, 0, 0.2, 1] as const }
-    }
+    animate: { x: 0, transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] as any } },
+    exit: { x: '-100%', transition: { duration: 0.25 } }
 };
 
 const backdropVariants = {
     initial: { opacity: 0 },
-    animate: {
-        opacity: 1,
-        transition: { duration: 0.2 }
-    },
-    exit: {
-        opacity: 0,
-        transition: { duration: 0.2 }
-    }
+    animate: { opacity: 1, transition: { duration: 0.2 } },
+    exit: { opacity: 0, transition: { duration: 0.2 } }
 };
 
 const FilterBar: React.FC<FilterBarProps> = ({
@@ -65,19 +53,79 @@ const FilterBar: React.FC<FilterBarProps> = ({
     onFilterChange,
     onSortChange,
     onClearFilters,
+    featureFilters = [],
+    onFeatureFilterChange,
 }) => {
     const [isMobile, setIsMobile] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    
+    // Track scroll position for threshold-based collapse
+    const lastScrollY = useRef(0);
+    // Track where user manually expanded - allows re-collapse after scrolling 100px past this point
+    const expandedAtScrollY = useRef<number | null>(null);
 
-    // Check for mobile screen size
     useEffect(() => {
         const checkMobile = () => {
-            setIsMobile(window.innerWidth < 768);
+            const mobile = window.innerWidth < 768;
+            setIsMobile(mobile);
+            if (mobile) setIsCollapsed(false);
         };
         checkMobile();
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
+
+    // Scroll logic:
+    // - Auto-collapse on first scroll past 150px threshold
+    // - If user manually expands while scrolled, track that position
+    // - Re-collapse automatically if user scrolls 100px past where they expanded
+    // - Auto-expand when scrolled to top
+    useEffect(() => {
+        if (isMobile) return;
+        
+        const handleScroll = () => {
+            const scrollY = window.scrollY;
+            const threshold = 150;
+            
+            // First time crossing threshold - auto collapse
+            if (scrollY > threshold && lastScrollY.current <= threshold) {
+                setIsCollapsed(true);
+                expandedAtScrollY.current = null;
+            }
+            
+            // If user manually expanded and scrolls 100px past that point, re-collapse
+            if (expandedAtScrollY.current !== null && scrollY > expandedAtScrollY.current + 100) {
+                setIsCollapsed(true);
+                expandedAtScrollY.current = null;
+            }
+            
+            // Auto-expand when scrolled to top
+            if (scrollY <= 10) {
+                setIsCollapsed(false);
+                expandedAtScrollY.current = null;
+            }
+            
+            lastScrollY.current = scrollY;
+        };
+        
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [isMobile]);
+
+    // Manual toggle - tracks expand position for smart re-collapse
+    const handleToggleCollapse = () => {
+        if (isMobile) return;
+        setIsCollapsed(prev => {
+            const next = !prev;
+            if (!next) {
+                // User is expanding - track scroll position for smart re-collapse
+                expandedAtScrollY.current = window.scrollY;
+            } else {
+                expandedAtScrollY.current = null;
+            }
+            return next;
+        });
+    };
 
     const hasActiveFilters =
         filters.workArea.length > 0 ||
@@ -85,55 +133,127 @@ const FilterBar: React.FC<FilterBarProps> = ({
         filters.shelterModel.length > 0 ||
         filters.riskArea.length > 0 ||
         filters.panelType.length > 0 ||
-        filters.hasPhoto;
+        filters.hasPhoto ||
+        featureFilters.length > 0;
 
-    // Filter content component (shared between mobile and desktop)
-    const FilterContent = () => (
-        <>
-            {/* Header & Sort */}
-            <div className={`flex ${isMobile ? 'flex-col space-y-4' : 'flex-row justify-between items-center mb-4'}`}>
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center text-gray-700 dark:text-gray-200 font-medium">
-                        <Filter className="w-5 h-5 mr-2 text-eletro-orange" />
-                        Filtros
-                        {hasActiveFilters && (
-                            <motion.button
-                                onClick={onClearFilters}
-                                className="ml-4 text-xs text-red-500 hover:text-red-700 flex items-center bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full transition-colors"
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                            >
-                                <X className="w-3 h-3 mr-1" />
-                                Limpar
-                            </motion.button>
-                        )}
+    const activePills = [
+        ...filters.workArea.map(v => ({ key: 'workArea', label: v, value: v })),
+        ...filters.neighborhood.map(v => ({ key: 'neighborhood', label: v, value: v })),
+        ...filters.shelterModel.map(v => ({ key: 'shelterModel', label: v, value: v })),
+        ...filters.riskArea.map(v => ({ key: 'riskArea', label: v, value: v })),
+        ...filters.panelType.map(t => ({ 
+            key: 'panelType', 
+            value: t,
+            label: t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis' 
+        })),
+        ...(filters.hasPhoto ? [{ key: 'hasPhoto', label: 'Com Foto', value: true }] : []),
+        ...featureFilters.map(f => ({ key: 'feature', label: f, value: f }))
+    ];
+
+    const activeCount = activePills.length;
+
+    const handleRemovePill = (pill: { key: string, value: any, label: string }) => {
+        if (pill.key === 'feature' && onFeatureFilterChange) {
+            onFeatureFilterChange(pill.value);
+        } else if (pill.key === 'hasPhoto') {
+            onFilterChange('hasPhoto', false);
+        } else {
+            const currentValues = filters[pill.key as keyof typeof filters];
+            if (Array.isArray(currentValues)) {
+                onFilterChange(pill.key, currentValues.filter(v => v !== pill.value));
+            }
+        }
+    };
+
+    const renderMainContent = (mobileView: boolean) => (
+        <div className="flex flex-col w-full">
+            <div className={`flex items-center justify-between ${!mobileView && isCollapsed ? 'mb-0' : 'mb-4'}`}>
+                <div className="flex items-center flex-1 min-w-0">
+                    <div 
+                        className="flex items-center text-gray-700 dark:text-gray-200 font-semibold mr-4 whitespace-nowrap cursor-pointer hover:text-eletro-orange transition-colors group"
+                        onClick={handleToggleCollapse}
+                    >
+                        <motion.div 
+                            className="relative mr-2"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <motion.div>
+                                <Filter className="w-5 h-5 text-eletro-orange" />
+                            </motion.div>
+                            <AnimatePresence>
+                                {activeCount > 0 && (
+                                    <motion.span 
+                                        initial={{ scale: 0, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0, opacity: 0 }}
+                                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                                        className="absolute -top-2 -right-2 bg-eletro-orange text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-sm"
+                                    >
+                                        {activeCount}
+                                    </motion.span>
+                                )}
+                            </AnimatePresence>
+                        </motion.div>
+                        <span className="hidden sm:inline">Filtros</span>
                     </div>
 
-                    {isMobile && (
-                        <motion.button
-                            onClick={onClose}
-                            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                        >
-                            <X className="w-6 h-6" />
-                        </motion.button>
+                    {!mobileView && isCollapsed && activeCount > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pr-4 flex-1">
+                            <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-2 flex-shrink-0" />
+                            <div className="flex items-center gap-1.5">
+                                {activePills.slice(0, 5).map((pill, i) => (
+                                    <span
+                                        key={`${pill.key}-${pill.label}-${i}`}
+                                        className="px-2 py-0.5 bg-orange-50 dark:bg-orange-900/10 text-eletro-orange text-[10px] font-bold rounded-full whitespace-nowrap border border-orange-100/50 dark:border-orange-800/20 flex items-center gap-1"
+                                    >
+                                        {pill.label}
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleRemovePill(pill); }}
+                                            className="ml-0.5 p-0.5 rounded-full hover:bg-eletro-orange hover:text-white transition-colors"
+                                        >
+                                            <X className="w-2.5 h-2.5" />
+                                        </button>
+                                    </span>
+                                ))}
+                                {activeCount > 5 && (
+                                    <span className="text-[10px] text-gray-400 font-bold bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">
+                                        +{activeCount - 5}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     )}
-                    {!isMobile && (
-                        <motion.button
-                            onClick={() => setIsCollapsed(prev => !prev)}
-                            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 ml-2"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                            title={isCollapsed ? 'Expandir filtros' : 'Recolher filtros'}
+
+                    {hasActiveFilters && (!isCollapsed || mobileView) && (
+                        <button
+                            onClick={onClearFilters}
+                            className="text-[10px] uppercase tracking-wider font-bold text-red-500 hover:text-white hover:bg-red-500 flex items-center bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-md transition-all whitespace-nowrap ml-4"
                         >
-                            {isCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
+                            <X className="w-3 h-3 mr-1" />
+                            Limpar
+                        </button>
+                    )}
+
+                    {!mobileView && (
+                        <motion.button
+                            onClick={handleToggleCollapse}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 ml-auto flex-shrink-0"
+                            whileHover={{ scale: 1.1, backgroundColor: 'rgba(255, 79, 0, 0.1)' }}
+                            whileTap={{ scale: 0.9 }}
+                        >
+                            <motion.div
+                                animate={{ rotate: isCollapsed ? 0 : 180 }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                            >
+                                <ChevronDown className="w-5 h-5" />
+                            </motion.div>
                         </motion.button>
                     )}
                 </div>
 
-                <div className={`flex items-center space-x-2 ${isMobile ? 'w-full justify-between bg-gray-50 dark:bg-gray-800 p-2 rounded-lg' : ''}`}>
-                    <div className="flex items-center space-x-2">
+                {!mobileView && (
+                    <div className="flex items-center space-x-2 ml-4">
                         <div className="w-40">
                             <MultiSelectDropdown
                                 label="Ordenar"
@@ -156,33 +276,29 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 singleSelect={true}
                             />
                         </div>
-                        <motion.button
+                        <button
                             onClick={() => onSortChange(sort.field)}
                             disabled={!sort.field}
                             className={`p-2 rounded-md border transition-colors ${!sort.field
                                 ? 'text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
                                 : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 bg-white dark:bg-gray-800'}`}
-                            whileHover={sort.field ? { scale: 1.05 } : {}}
-                            whileTap={sort.field ? { scale: 0.95 } : {}}
                         >
                             {sort.direction === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
-                        </motion.button>
+                        </button>
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* Filter Inputs Grid - Collapsible on desktop */}
             <AnimatePresence initial={false}>
-                {(!isCollapsed || isMobile) && (
+                {(mobileView || !isCollapsed) && (
                     <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                        style={{ overflow: 'visible' }}
+                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                        className="overflow-hidden"
                     >
-                        <div className={`grid gap-3 ${isMobile ? 'grid-cols-1 mt-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 mt-4'}`}>
-                            {/* Área de Trabalho */}
+                        <div className={`grid gap-3 ${mobileView ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6'}`}>
                             <MultiSelectDropdown
                                 label="Área de Trabalho"
                                 icon={<MapPin className="h-4 w-4" />}
@@ -190,8 +306,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 selected={filters.workArea}
                                 onChange={(val) => onFilterChange('workArea', val)}
                             />
-
-                            {/* Bairro */}
                             <MultiSelectDropdown
                                 label="Bairro"
                                 icon={<Home className="h-4 w-4" />}
@@ -199,8 +313,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 selected={filters.neighborhood}
                                 onChange={(val) => onFilterChange('neighborhood', val)}
                             />
-
-                            {/* Modelo de Abrigo */}
                             <MultiSelectDropdown
                                 label="Modelo"
                                 icon={<Home className="h-4 w-4" />}
@@ -208,8 +320,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 selected={filters.shelterModel}
                                 onChange={(val) => onFilterChange('shelterModel', val)}
                             />
-
-                            {/* Área de Risco */}
                             <MultiSelectDropdown
                                 label="Risco"
                                 icon={<AlertTriangle className="h-4 w-4" />}
@@ -217,8 +327,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 selected={filters.riskArea}
                                 onChange={(val) => onFilterChange('riskArea', val)}
                             />
-
-                            {/* Tipo de Painel */}
                             <MultiSelectDropdown
                                 label="Painéis"
                                 icon={<PanelTop className="h-4 w-4" />}
@@ -230,35 +338,29 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                     v === 'Painel Digital' ? 'digital' : v === 'Painel Estático' ? 'static' : 'none'
                                 ))}
                             />
-
-                            {/* Contém Foto */}
-                            <motion.button
+                            <button
                                 onClick={() => onFilterChange('hasPhoto', !filters.hasPhoto)}
                                 className={`flex items-center justify-center px-4 py-2 border rounded-md text-sm font-medium transition-colors ${filters.hasPhoto
                                     ? 'bg-eletro-orange text-white border-eletro-orange'
                                     : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
                                     }`}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
                             >
                                 <Image className={`w-4 h-4 mr-2 ${filters.hasPhoto ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
                                 {filters.hasPhoto ? 'Com Foto' : 'Apenas com Foto'}
                                 {filters.hasPhoto && <Check className="w-4 h-4 ml-2" />}
-                            </motion.button>
+                            </button>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
-        </>
+        </div>
     );
 
-    // Mobile: Render as animated sidebar drawer
     if (isMobile) {
         return (
             <AnimatePresence>
                 {isOpen && (
                     <>
-                        {/* Backdrop */}
                         <motion.div
                             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
                             variants={backdropVariants}
@@ -267,8 +369,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                             exit="exit"
                             onClick={onClose}
                         />
-
-                        {/* Sidebar */}
                         <motion.div
                             className="fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl border-r border-gray-200 dark:border-gray-700"
                             variants={sidebarVariants}
@@ -277,7 +377,15 @@ const FilterBar: React.FC<FilterBarProps> = ({
                             exit="exit"
                         >
                             <div className="h-full flex flex-col p-4 overflow-y-auto">
-                                <FilterContent />
+                                {renderMainContent(true)}
+                                <div className="mt-auto pt-6 border-t dark:border-gray-800">
+                                    <button
+                                        onClick={onClose}
+                                        className="w-full py-3 bg-eletro-orange text-white rounded-lg font-bold"
+                                    >
+                                        Ver Resultados
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </>
@@ -286,14 +394,24 @@ const FilterBar: React.FC<FilterBarProps> = ({
         );
     }
 
-    // Desktop: Render as sticky bar with proper offset
-    // Header height: logo row (72px) + tabs (~45px) + border + padding = ~130px
     return (
-        <div className="bg-white/90 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 py-4 mb-6 sticky top-[150px] z-20 shadow-sm">
+        <motion.div 
+            initial={false}
+            animate={{ 
+                paddingTop: isCollapsed ? 8 : 16,
+                paddingBottom: isCollapsed ? 8 : 16,
+            }}
+            transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 30,
+            }}
+            className="bg-white/90 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 mb-6 sticky top-[152px] z-20 shadow-sm"
+        >
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <FilterContent />
+                {renderMainContent(false)}
             </div>
-        </div>
+        </motion.div>
     );
 };
 

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Equipment } from '../types';
-import { CloseIcon, MapPinIcon, InfoIcon, MaximizeIcon } from './Icons';
+import { CloseIcon, MapPinIcon, InfoIcon, MaximizeIcon, TagIcon, WifiIcon, CameraIcon, DigitalIcon, ZapIcon, CalendarIcon, BoxIcon, CheckIcon, ExternalLinkIcon } from './Icons';
 import MapEmbed from './MapEmbed';
 import { spring } from '../lib/animations';
 import placeholderImg from '../assets/placeholder.jpg';
@@ -10,6 +10,29 @@ interface DetailPanelProps {
   item: Equipment | null;
   onClose: () => void;
 }
+
+// Helper to format values
+const formatValue = (key: string, value: any): string => {
+  if (key === "Tipo de Estabelecimento") {
+    const valStr = String(value).toLowerCase();
+    if (valStr.includes('totem')) return "Abrigos São Paulo - Totens";
+    if (valStr.includes('abrigo')) return "Abrigos São Paulo - Abrigos";
+  }
+  return String(value);
+};
+
+// Helper to get icons for keys
+const getIconForKey = (key: string) => {
+  const k = key.toLowerCase();
+  if (k.includes('status')) return <CheckIcon className="w-4 h-4 text-green-500" />;
+  if (k.includes('wi-fi')) return <WifiIcon className="w-4 h-4 text-blue-400" />;
+  if (k.includes('câmera')) return <CameraIcon className="w-4 h-4 text-gray-400" />;
+  if (k.includes('digital')) return <DigitalIcon className="w-4 h-4 text-purple-400" />;
+  if (k.includes('energizado') || k.includes('luminária')) return <ZapIcon className="w-4 h-4 text-yellow-400" />;
+  if (k.includes('cadastro')) return <CalendarIcon className="w-4 h-4 text-orange-400" />;
+  if (k.includes('modelo') || k.includes('tipo')) return <BoxIcon className="w-4 h-4 text-indigo-400" />;
+  return <TagIcon className="w-4 h-4 text-gray-400" />;
+};
 
 // Animation variants
 const backdropVariants = {
@@ -68,13 +91,25 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
   const address = item?.["Endereço"] || '';
 
   // Filter out empty keys and specific visual keys for the "Specs" list
-  const specKeys = item ? Object.keys(item).filter(key =>
-    key !== "Foto Referência" &&
-    key !== "Endereço" &&
-    key !== "Nº Eletro" &&
-    key !== "Link Operações" &&
-    item[key]
-  ) : [];
+  const specKeys = item ? Object.keys(item).filter(key => {
+    const value = item[key];
+    return (
+      key !== "Foto Referência" &&
+      key !== "Endereço" &&
+      key !== "Nº Eletro" &&
+      key !== "Link Operações" &&
+      key !== "Modelo de Abrigo" &&
+      key !== "Status" && // Shown as badge
+      key !== "Latitude" &&
+      key !== "Longitude" &&
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      value !== "-" &&
+      value !== "N/A" &&
+      typeof value !== 'object'
+    );
+  }) : [];
 
   return (
     <AnimatePresence mode="wait">
@@ -124,18 +159,27 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
                 />
                 <motion.button
                   onClick={openImageModal}
-                  className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors z-20"
+                  className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors z-20"
                   title="Expandir imagem"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                 >
-                  <MaximizeIcon className="w-5 h-5" />
+                  <MaximizeIcon className="w-6 h-6" />
                 </motion.button>
                 <div className="absolute bottom-0 left-0 w-full p-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent text-white">
-                  <div className="inline-block px-3 py-1 bg-eletro-orange rounded mb-2 font-bold text-sm tracking-wide">
-                    {id}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="px-3 py-1 bg-eletro-orange rounded font-bold text-sm tracking-wide">
+                      {id}
+                    </div>
+                    {item["Status"] && item["Status"] !== "-" && (
+                      <div className={`px-3 py-1 rounded text-sm font-bold uppercase tracking-wide ${
+                        item["Status"] === "Ativo" ? "bg-green-500/80" : "bg-red-500/80"
+                      }`}>
+                        {item["Status"]}
+                      </div>
+                    )}
                   </div>
-                  <h2 className="text-3xl font-bold">{item["Modelo de Abrigo"] || 'Modelo não especificado'}</h2>
+                  <h2 className="text-3xl font-bold">{item["Modelo de Abrigo"] || item["Modelo"] || 'Modelo não especificado'}</h2>
                   <div className="flex items-center mt-2 text-gray-200">
                     <MapPinIcon className="w-4 h-4 mr-2" />
                     <span className="text-sm font-light">{address}</span>
@@ -151,18 +195,31 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
                     <h3 className="font-bold text-xl">Especificações Técnicas</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {specKeys.map((key, index) => (
-                      <motion.div
-                        key={key}
-                        className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.02 }}
-                      >
-                        <span className="block text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase mb-1">{key}</span>
-                        <span className="block text-gray-900 dark:text-gray-100 font-medium break-words">{item[key]}</span>
-                      </motion.div>
-                    ))}
+                    {specKeys.length > 0 ? (
+                      specKeys.map((key, index) => (
+                        <motion.div
+                          key={key}
+                          className={`bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700 flex flex-col ${
+                            key === "Observações" ? "sm:col-span-2" : ""
+                          }`}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.02 }}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            {getIconForKey(key)}
+                            <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-tight">{key}</span>
+                          </div>
+                          <span className="text-gray-900 dark:text-gray-100 font-medium break-words leading-tight">
+                            {formatValue(key, item[key])}
+                          </span>
+                        </motion.div>
+                      ))
+                    ) : (
+                      <div className="col-span-full py-8 text-center text-gray-400 italic bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-200 dark:border-gray-700">
+                        Nenhuma especificação técnica adicional disponível.
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -191,15 +248,16 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
 
             {/* Footer Actions */}
             <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
-              {item["Link Operações"] && (
+              {item["Link Operações"] && typeof item["Link Operações"] === 'string' && (
                 <motion.a
                   href={item["Link Operações"]}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full py-3 bg-eletro-orange text-white text-center rounded-lg font-semibold hover:bg-orange-600 transition-colors"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-eletro-orange text-white text-center rounded-lg font-semibold hover:bg-orange-600 transition-colors"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
+                  <ExternalLinkIcon className="w-4 h-4" />
                   Abrir no Operações
                 </motion.a>
               )}

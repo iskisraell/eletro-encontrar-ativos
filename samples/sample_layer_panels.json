@@ -1,12 +1,12 @@
 {
   "status": "success",
   "meta": {
-    "apiVersion": "5.0.0",
+    "apiVersion": "5.1.0",
     "layer": "panels",
     "count": 0,
     "total": 0,
     "cached": false,
-    "cacheExpires": "2025-12-15T19:04:51.282Z",
+    "cacheExpires": "2025-12-20T19:04:51.282Z",
     "executionTimeMs": 1522
   },
   "links": {
@@ -19,23 +19,24 @@
   "data": [],
   "_note": "This layer returns panels data indexed by Nº Eletro. When panel data exists, each record contains the following structure:",
   "_exampleRecord": {
-    "Nº Eletro": "A01516",
+    "Nº Eletro": "A01517",
     "digital": {
       "boxes": 1,
       "faces": 1,
       "position": "90°",
-      "type": "SIMPLES"
+      "type": "SIMPLES",
+      "brand": "BOE/DD"
     },
     "static": {
-      "boxes": 2,
-      "faces": 2,
+      "boxes": 1,
+      "faces": 1,
       "position": "180°",
-      "type": "SUSPENSO"
+      "type": "SIMPLES"
     },
     "shelterModel": "CAOS LEVE",
     "observation": null,
     "hasDigital": true,
     "hasStatic": true,
-    "totalPanels": 3
+    "totalPanels": 2
   }
 }

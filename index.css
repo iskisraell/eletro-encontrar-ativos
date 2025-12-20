@@ -46,6 +46,15 @@ textarea:focus,
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
     }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
 }
 
 @keyframes shimmer {

@@ -1,12 +1,12 @@
 {
   "status": "success",
   "meta": {
-    "apiVersion": "5.0.0",
+    "apiVersion": "5.1.0",
     "layer": "full",
     "count": 3,
     "total": 3,
     "cached": true,
-    "cacheExpires": "2025-12-15T18:59:51.424Z",
+    "cacheExpires": "2025-12-20T18:59:51.424Z",
     "executionTimeMs": 547
   },
   "links": {
@@ -141,18 +141,19 @@
       "boxes": 1,
       "faces": 1,
       "position": "90°",
-      "type": "SIMPLES"
+      "type": "SIMPLES",
+      "brand": "BOE/DD"
     },
     "static": {
-      "boxes": 2,
-      "faces": 2,
+      "boxes": 1,
+      "faces": 1,
       "position": "180°",
-      "type": "SUSPENSO"
+      "type": "SIMPLES"
     },
     "shelterModel": "CAOS LEVE",
     "observation": null,
     "hasDigital": true,
     "hasStatic": true,
-    "totalPanels": 3
+    "totalPanels": 2
   }
 }
