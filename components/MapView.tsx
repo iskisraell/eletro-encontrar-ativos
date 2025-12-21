@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
@@ -6,7 +7,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MergedEquipment } from '../types';
 import { useIsDark } from '../hooks/useDarkMode';
 import { isAbrigo } from '../schemas/equipment';
-import { MapPin, Box, Image, Smartphone, Filter, X, Loader2 } from 'lucide-react';
+import { 
+  MapPin, Box, Filter, X, Loader2,
+  BusFront, Camera, Smartphone, Frame, 
+  CheckCircle2, XCircle, Eye, Navigation, ExternalLink, Hash
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 import { 
   mapDataCache,
@@ -391,7 +396,7 @@ const MapFilterBar: React.FC<MapFilterBarProps> = ({
                     : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
                 )}
               >
-                <Image className="w-4 h-4" />
+<Camera className="w-4 h-4" />
                 <span>Com Foto</span>
               </button>
 
@@ -445,17 +450,54 @@ interface MarkerData {
 // Optimized Marker Component using CircleMarker (Canvas-based)
 // Inline popup content - react-leaflet handles lazy rendering
 // ============================================
+
+// Helper function to generate Street View URL
+const getStreetViewUrl = (lat: number, lng: number, address?: string) => {
+  // Try Google Maps with Street View layer using coordinates
+  // The cbll parameter sets the Street View position, cbp sets the camera angle
+  const streetViewUrl = `https://www.google.com/maps?layer=c&cbll=${lat},${lng}`;
+  
+  // Fallback to address search if coordinates don't have Street View coverage
+  const addressFallback = address 
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+    : `https://www.google.com/maps?q=${lat},${lng}`;
+  
+  // We'll use the Street View URL - Google will redirect to address if no coverage
+  return streetViewUrl;
+};
+
 const OptimizedMarker: React.FC<{
   data: MarkerData;
   onClick: (item: MergedEquipment) => void;
 }> = React.memo(({ data, onClick }) => {
+  const [showLightbox, setShowLightbox] = useState(false);
+  const [isClosingLightbox, setIsClosingLightbox] = useState(false);
+  
   const handleViewDetails = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onClick(data.item);
   }, [data.item, onClick]);
 
-  // Check for photo
-  const hasPhoto = data.item["Foto Referência"] && data.item["Foto Referência"].length > 0;
+  const handleOpenLightbox = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setShowLightbox(true);
+    setIsClosingLightbox(false);
+  }, []);
+
+  const handleCloseLightbox = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsClosingLightbox(true);
+    // Wait for animation to complete before hiding
+    setTimeout(() => {
+      setShowLightbox(false);
+      setIsClosingLightbox(false);
+    }, 200);
+  }, []);
+
+  // Get photo URL
+  const photoUrl = data.item["Foto Referência"];
+  const hasPhoto = photoUrl && photoUrl.length > 0;
   
   // Check for panel data - prefer merged _panelData, fallback to legacy fields
   const hasMergedData = '_hasPanelData' in data.item && data.item._hasPanelData && '_panelData' in data.item;
@@ -468,76 +510,145 @@ const OptimizedMarker: React.FC<{
     ? data.item._panelData.hasStatic
     : (data.item["Painel Estático - Tipo"] && data.item["Painel Estático - Tipo"] !== "" && data.item["Painel Estático - Tipo"] !== "-");
 
+  // Generate Street View URL
+  const streetViewUrl = getStreetViewUrl(
+    data.position[0], 
+    data.position[1], 
+    data.item["Endereço"]
+  );
+
+  // Status info
+  const status = data.item["Status"];
+  const isActive = status === "Ativo";
+  const showStatus = status && status !== "-";
+
+  // Model name
+  const modelName = data.item["Modelo de Abrigo"] || data.item["Modelo"] || 'Sem modelo';
+
   return (
-    <CircleMarker
-      center={data.position}
-      radius={7}
-      pathOptions={{
-        fillColor: '#ff4f00',
-        fillOpacity: 0.9,
-        color: '#ffffff',
-        weight: 2,
-        opacity: 1,
-      }}
-    >
-      <Popup className="custom-popup">
-        <div className="equipment-popup">
-          {/* Header with ID and Status */}
-          <div className="popup-header">
-            <span className="popup-id">
-              {data.item["Nº Eletro"] || 'N/A'}
-            </span>
-            {data.item["Status"] && data.item["Status"] !== "-" && (
-              <span className={`popup-status ${data.item["Status"] === "Ativo" ? 'status-active' : 'status-inactive'}`}>
-                {data.item["Status"]}
+    <>
+      <CircleMarker
+        center={data.position}
+        radius={7}
+        pathOptions={{
+          fillColor: '#ff4f00',
+          fillOpacity: 0.9,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+        }}
+      >
+        <Popup 
+          className="custom-popup"
+          offset={[0, -7]}
+          autoPan={true}
+          autoPanPadding={[50, 50]}
+        >
+          <div className="equipment-popup">
+            {/* Header with ID and Status */}
+            <div className="popup-header">
+              <span className="popup-id">
+                <Hash className="w-3 h-3" />
+                {data.item["Nº Eletro"] || 'N/A'}
               </span>
+              {showStatus && (
+                <span className={`popup-status ${isActive ? 'status-active' : 'status-inactive'}`}>
+                  {isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {status}
+                </span>
+              )}
+            </div>
+            
+            {/* Model Name with Bus Stop Icon */}
+            <div className="popup-model-row">
+              <BusFront className="popup-model-icon" />
+              <h3 className="popup-title">{modelName}</h3>
+            </div>
+            
+            {/* Address with Map Pin */}
+            {data.item["Endereço"] && (
+              <div className="popup-address-row">
+                <MapPin className="popup-address-icon" />
+                <p className="popup-address">{data.item["Endereço"]}</p>
+              </div>
             )}
-          </div>
-          
-          {/* Model Name */}
-          <h3 className="popup-title">
-            {data.item["Modelo de Abrigo"] || data.item["Modelo"] || 'Sem modelo'}
-          </h3>
-          
-          {/* Address */}
-          {data.item["Endereço"] && (
-            <p className="popup-address">
-              {data.item["Endereço"]}
-            </p>
-          )}
 
-          {/* Quick Info Row - Shows Photo, Digital, and Static badges */}
-          <div className="popup-info-row">
-            {hasPhoto && (
-              <span className="popup-info-badge">
-                <Image className="w-3 h-3" />
-                Foto
-              </span>
-            )}
-            {hasDigital && (
-              <span className="popup-info-badge popup-info-digital">
-                <Smartphone className="w-3 h-3" />
-                Digital
-              </span>
-            )}
-            {hasStatic && (
-              <span className="popup-info-badge popup-info-static">
-                <Box className="w-3 h-3" />
-                Estático
-              </span>
-            )}
-          </div>
+            {/* Feature Badges Row */}
+            <div className="popup-info-row">
+              {hasPhoto && (
+                <button 
+                  className="popup-badge popup-badge-foto"
+                  onClick={handleOpenLightbox}
+                  type="button"
+                >
+                  <Camera className="w-3 h-3" />
+                  Foto
+                </button>
+              )}
+              {hasDigital && (
+                <span className="popup-badge popup-badge-digital">
+                  <Smartphone className="w-3 h-3" />
+                  Digital
+                </span>
+              )}
+              {hasStatic && (
+                <span className="popup-badge popup-badge-static">
+                  <Frame className="w-3 h-3" />
+                  Estático
+                </span>
+              )}
+            </div>
 
-          {/* Action Button */}
-          <button
-            onClick={handleViewDetails}
-            className="popup-button"
+            {/* Action Buttons */}
+            <div className="popup-buttons">
+              <button
+                onClick={handleViewDetails}
+                className="popup-button"
+                type="button"
+              >
+                <Eye className="w-4 h-4" />
+                Ver Detalhes
+              </button>
+              <a
+                href={streetViewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="popup-button-secondary"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Navigation className="w-4 h-4" />
+                Street View
+                <ExternalLink className="w-3 h-3 opacity-60" />
+              </a>
+            </div>
+          </div>
+        </Popup>
+      </CircleMarker>
+
+      {/* Lightbox Modal for Photo - rendered via portal to escape Leaflet DOM */}
+      {showLightbox && hasPhoto && ReactDOM.createPortal(
+        <div 
+          className={`popup-lightbox${isClosingLightbox ? ' closing' : ''}`}
+          onClick={handleCloseLightbox}
+        >
+          <button 
+            className="popup-lightbox-close"
+            onClick={handleCloseLightbox}
+            type="button"
+            aria-label="Fechar"
           >
-            Ver Detalhes
+            <X className="w-6 h-6" />
           </button>
-        </div>
-      </Popup>
-    </CircleMarker>
+          <img 
+            src={photoUrl} 
+            alt={`Foto do abrigo ${data.item["Nº Eletro"]}`}
+            className="popup-lightbox-image"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>,
+        document.body
+      )}
+    </>
   );
 });
 
@@ -921,7 +1032,7 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
         {/* Tile layer with dark/light mode switching */}
         <TileLayerSwitcher isDark={isDark} onLoadingChange={setIsTilesLoading} />
 
-        {/* Marker Cluster Group - let it handle its own optimizations */}
+        {/* Marker Cluster Group - animations only after loading complete */}
         <MarkerClusterGroup
           chunkedLoading={true}
           chunkDelay={50}
@@ -932,7 +1043,9 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
           showCoverageOnHover={false}
           disableClusteringAtZoom={17}
           removeOutsideVisibleBounds={true}
-          animate={false}
+          animate={!isProcessing}
+          animateAddingMarkers={false}
+          spiderfyDistanceMultiplier={1.5}
         >
           {loadedMarkers.map((data) => (
             <OptimizedMarker

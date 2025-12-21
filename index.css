@@ -146,136 +146,120 @@ textarea:focus,
     border: none !important;
 }
 
-/* Custom marker cluster styles */
-.marker-cluster {
-    background-color: rgba(255, 79, 0, 0.2);
-    border-radius: 50%;
-    transition: transform 0.15s ease;
+/* Custom marker cluster styles - see bottom of file for full animation styles */
+
+/* ===== Leaflet Popup Enhancements ===== */
+
+/* Popup container - positioning fix */
+.leaflet-popup {
+    /* Ensure popup doesn't have any transform conflicts */
+    margin-bottom: 0;
 }
 
-.marker-cluster:hover {
-    transform: scale(1.1);
-}
-
-.marker-cluster div {
-    background-color: #ff4f00;
-    color: white;
-    font-weight: 700;
-    font-size: 12px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Rethink Sans', sans-serif;
-    box-shadow: 0 2px 8px rgba(255, 79, 0, 0.3);
-}
-
-.marker-cluster-small {
-    width: 36px;
-    height: 36px;
-}
-
-.marker-cluster-small div {
-    width: 28px;
-    height: 28px;
-    margin: 4px;
-}
-
-.marker-cluster-medium {
-    width: 44px;
-    height: 44px;
-}
-
-.marker-cluster-medium div {
-    width: 36px;
-    height: 36px;
-    margin: 4px;
-    font-size: 13px;
-}
-
-.marker-cluster-large {
-    width: 52px;
-    height: 52px;
-}
-
-.marker-cluster-large div {
-    width: 44px;
-    height: 44px;
-    margin: 4px;
-    font-size: 14px;
-}
-
-/* Dark mode adjustments for clusters */
-.dark .marker-cluster {
-    background-color: rgba(255, 79, 0, 0.3);
-}
-
-.dark .marker-cluster div {
-    box-shadow: 0 2px 8px rgba(255, 79, 0, 0.4);
-}
-
-/* Leaflet popup customization */
+/* Popup content wrapper animation */
 .leaflet-popup-content-wrapper {
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 0;
-    overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+    overflow: visible;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
     background: #ffffff;
     font-family: 'Rethink Sans', sans-serif;
+    animation: popup-enter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transform-origin: bottom center;
+}
+
+@keyframes popup-enter {
+    0% {
+        opacity: 0;
+        transform: scale(0.85) translateY(8px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 .leaflet-popup-content {
     margin: 0;
-    min-width: 240px;
-    max-width: 280px;
+    min-width: 280px;
+    max-width: 320px;
+}
+
+/* Popup tip (arrow) */
+.leaflet-popup-tip-container {
+    margin-top: -1px;
 }
 
 .leaflet-popup-tip {
     background: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+/* Close button - circular with better positioning */
 .leaflet-popup-close-button {
+    width: 28px !important;
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #f4f4f5 !important;
+    border-radius: 50% !important;
     color: #71717a !important;
-    font-size: 20px !important;
-    padding: 8px 10px !important;
-    top: 4px !important;
-    right: 4px !important;
-    transition: color 0.15s ease;
+    font-size: 18px !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+    padding: 0 !important;
+    top: 12px !important;
+    right: 12px !important;
+    transition: all 0.15s ease !important;
+    z-index: 10 !important;
 }
 
 .leaflet-popup-close-button:hover {
-    color: #ff4f00 !important;
+    background: #ff4f00 !important;
+    color: white !important;
+    transform: scale(1.05);
 }
 
 /* Custom popup content styling */
 .equipment-popup {
-    padding: 16px;
+    padding: 20px;
+    padding-top: 16px;
 }
 
+/* Header with badges */
 .popup-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
+    padding-right: 32px;
 }
 
+/* ID Badge */
 .popup-id {
-    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
     background: linear-gradient(135deg, #ff4f00 0%, #ff6b2c 100%);
     color: white;
     font-size: 12px;
     font-weight: 700;
-    border-radius: 6px;
+    border-radius: 8px;
     letter-spacing: 0.02em;
-    box-shadow: 0 2px 6px rgba(255, 79, 0, 0.25);
+    box-shadow: 0 2px 8px rgba(255, 79, 0, 0.3);
 }
 
+/* Status Badge - standardized */
 .popup-status {
-    padding: 4px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
     font-size: 10px;
     font-weight: 700;
-    border-radius: 6px;
+    border-radius: 8px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
@@ -283,28 +267,59 @@ textarea:focus,
 .popup-status.status-active {
     background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
     color: white;
-    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
 
 .popup-status.status-inactive {
     background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
     color: white;
-    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+/* Model title with icon */
+.popup-model-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.popup-model-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: #ff4f00;
+    margin-top: 1px;
 }
 
 .popup-title {
     font-size: 15px;
     font-weight: 700;
     color: #18181b;
-    margin: 0 0 6px 0;
-    line-height: 1.3;
+    margin: 0;
+    line-height: 1.35;
     letter-spacing: -0.01em;
+}
+
+/* Address with icon */
+.popup-address-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.popup-address-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: #a1a1aa;
 }
 
 .popup-address {
     font-size: 12px;
     color: #71717a;
-    margin: 0 0 12px 0;
+    margin: 0;
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -312,65 +327,239 @@ textarea:focus,
     overflow: hidden;
 }
 
+/* Feature badges row */
 .popup-info-row {
     display: flex;
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: 8px;
+    margin-bottom: 16px;
     flex-wrap: wrap;
 }
 
-.popup-info-badge {
+/* Standardized badge styles */
+.popup-badge {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    background: #f4f4f5;
-    color: #52525b;
-    font-size: 10px;
+    gap: 5px;
+    padding: 6px 10px;
+    font-size: 11px;
     font-weight: 600;
-    border-radius: 6px;
+    border-radius: 8px;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    transition: all 0.15s ease;
 }
 
-.popup-info-badge.popup-info-digital {
+.popup-badge svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+/* Foto badge - clickable */
+.popup-badge-foto {
+    background: #fef3c7;
+    color: #d97706;
+    cursor: pointer;
+}
+
+.popup-badge-foto:hover {
+    background: #fde68a;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.2);
+}
+
+/* Digital badge */
+.popup-badge-digital {
     background: #f3e8ff;
     color: #7c3aed;
 }
 
-.popup-info-badge.popup-info-static {
+/* Static badge */
+.popup-badge-static {
     background: #dbeafe;
     color: #2563eb;
 }
 
+/* Buttons container */
+.popup-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Primary button */
 .popup-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     width: 100%;
-    padding: 10px 16px;
+    padding: 12px 16px;
     background: linear-gradient(135deg, #ff4f00 0%, #ff6b2c 100%);
     color: white;
     font-size: 13px;
     font-weight: 700;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(255, 79, 0, 0.25);
+    box-shadow: 0 4px 12px rgba(255, 79, 0, 0.3);
     letter-spacing: 0.01em;
 }
 
 .popup-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(255, 79, 0, 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 79, 0, 0.4);
 }
 
 .popup-button:active {
     transform: translateY(0);
 }
 
+.popup-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Secondary button (Street View) - Eletromidia branded */
+.popup-button-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 11px 16px;
+    background: linear-gradient(135deg, rgba(255, 79, 0, 0.08) 0%, rgba(255, 107, 44, 0.05) 100%);
+    color: #18181b !important;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1.5px solid rgba(255, 79, 0, 0.3);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.popup-button-secondary:hover {
+    background: linear-gradient(135deg, rgba(255, 79, 0, 0.15) 0%, rgba(255, 107, 44, 0.1) 100%);
+    border-color: rgba(255, 79, 0, 0.5);
+    color: #ff4f00 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 79, 0, 0.15);
+}
+
+.popup-button-secondary svg {
+    width: 16px;
+    height: 16px;
+}
+
+.popup-button-secondary .external-icon {
+    width: 12px;
+    height: 12px;
+    opacity: 0.6;
+}
+
+/* Image lightbox overlay for popup */
+.popup-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: lightbox-enter 0.2s ease-out forwards;
+}
+
+@keyframes lightbox-enter {
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes lightbox-exit {
+    0% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+.popup-lightbox.closing {
+    animation: lightbox-exit 0.2s ease-out forwards;
+}
+
+.popup-lightbox-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    animation: lightbox-image-enter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes lightbox-image-enter {
+    0% {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes lightbox-image-exit {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+}
+
+.popup-lightbox.closing .popup-lightbox-image {
+    animation: lightbox-image-exit 0.2s ease-out forwards;
+}
+
+.popup-lightbox-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.popup-lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.popup-lightbox-close svg {
+    width: 24px;
+    height: 24px;
+}
+
 /* Dark mode popup */
 .dark .leaflet-popup-content-wrapper {
     background: #18181b;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .dark .leaflet-popup-tip {
@@ -378,11 +567,13 @@ textarea:focus,
 }
 
 .dark .leaflet-popup-close-button {
+    background: #27272a !important;
     color: #a1a1aa !important;
 }
 
 .dark .leaflet-popup-close-button:hover {
-    color: #ff4f00 !important;
+    background: #ff4f00 !important;
+    color: white !important;
 }
 
 .dark .popup-title {
@@ -393,19 +584,46 @@ textarea:focus,
     color: #a1a1aa;
 }
 
-.dark .popup-info-badge {
-    background: #27272a;
-    color: #a1a1aa;
+.dark .popup-address-icon {
+    color: #71717a;
 }
 
-.dark .popup-info-badge.popup-info-digital {
+.dark .popup-model-icon {
+    color: #ff6b2c;
+}
+
+/* Dark mode badges */
+.dark .popup-badge-foto {
+    background: #422006;
+    color: #fbbf24;
+}
+
+.dark .popup-badge-foto:hover {
+    background: #713f12;
+}
+
+.dark .popup-badge-digital {
     background: #3b0764;
     color: #c4b5fd;
 }
 
-.dark .popup-info-badge.popup-info-static {
+.dark .popup-badge-static {
     background: #1e3a5f;
     color: #93c5fd;
+}
+
+/* Dark mode buttons */
+.dark .popup-button-secondary {
+    background: linear-gradient(135deg, rgba(255, 79, 0, 0.12) 0%, rgba(255, 107, 44, 0.08) 100%);
+    color: #e4e4e7 !important;
+    border-color: rgba(255, 79, 0, 0.35);
+}
+
+.dark .popup-button-secondary:hover {
+    background: linear-gradient(135deg, rgba(255, 79, 0, 0.2) 0%, rgba(255, 107, 44, 0.15) 100%);
+    border-color: rgba(255, 79, 0, 0.5);
+    color: #ff4f00 !important;
+    box-shadow: 0 4px 12px rgba(255, 79, 0, 0.2);
 }
 
 /* Also support prefers-color-scheme for system preference */
@@ -486,4 +704,118 @@ textarea:focus,
 /* Canvas marker hover effect - handled via Leaflet's pathOptions */
 .leaflet-interactive:hover {
     cursor: pointer;
+}
+
+/* ===== Cluster Animation Styles ===== */
+
+/* Marker cluster base - simple, performant transitions */
+.marker-cluster {
+    background-color: rgba(255, 79, 0, 0.2);
+    border-radius: 50%;
+    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.marker-cluster:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(255, 79, 0, 0.4);
+}
+
+.marker-cluster div {
+    background-color: #ff4f00;
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Rethink Sans', sans-serif;
+    box-shadow: 0 2px 8px rgba(255, 79, 0, 0.3);
+    transition: box-shadow 0.15s ease-out;
+}
+
+.marker-cluster:hover div {
+    box-shadow: 0 4px 12px rgba(255, 79, 0, 0.5);
+}
+
+/* Size-specific styles with smooth transitions */
+.marker-cluster-small {
+    width: 36px;
+    height: 36px;
+}
+
+.marker-cluster-small div {
+    width: 28px;
+    height: 28px;
+    margin: 4px;
+}
+
+.marker-cluster-medium {
+    width: 44px;
+    height: 44px;
+}
+
+.marker-cluster-medium div {
+    width: 36px;
+    height: 36px;
+    margin: 4px;
+    font-size: 13px;
+}
+
+.marker-cluster-large {
+    width: 52px;
+    height: 52px;
+}
+
+.marker-cluster-large div {
+    width: 44px;
+    height: 44px;
+    margin: 4px;
+    font-size: 14px;
+}
+
+/* Dark mode adjustments for clusters */
+.dark .marker-cluster {
+    background-color: rgba(255, 79, 0, 0.3);
+}
+
+.dark .marker-cluster div {
+    box-shadow: 0 2px 8px rgba(255, 79, 0, 0.4);
+}
+
+.dark .marker-cluster:hover {
+    box-shadow: 0 4px 16px rgba(255, 79, 0, 0.5);
+}
+
+/* Spiderfy animation - handled by Leaflet's built-in animate */
+.leaflet-cluster-anim .leaflet-marker-icon,
+.leaflet-cluster-anim .leaflet-marker-shadow {
+    transition: transform 0.2s ease-out, opacity 0.15s ease-out;
+}
+
+/* Spider legs styling */
+.leaflet-cluster-spider-leg {
+    stroke: #ff4f00;
+    stroke-opacity: 0.5;
+    stroke-width: 2;
+}
+
+/* Popup - simple fade (Leaflet handles positioning) */
+.leaflet-popup {
+    transition: opacity 0.15s ease-out;
+}
+
+/* ===== Reduced Motion Support ===== */
+@media (prefers-reduced-motion: reduce) {
+    .marker-cluster,
+    .marker-cluster div,
+    .leaflet-cluster-anim .leaflet-marker-icon,
+    .leaflet-cluster-anim .leaflet-marker-shadow,
+    .leaflet-popup {
+        transition: none !important;
+    }
+    
+    .marker-cluster:hover {
+        transform: none;
+    }
 }
