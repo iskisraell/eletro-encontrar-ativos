@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import { fadeInUp, spring } from '../../lib/animations';
+import { isFirstDashboardRender } from '../../hooks/useDashboardAnimation';
 
 interface ChartCardProps {
     title: string;
@@ -40,20 +41,22 @@ export const ChartCard: React.FC<ChartCardProps> = ({
     delay = 0,
 }) => {
     const styles = variantStyles[variant];
+    // Only animate on first dashboard render
+    const shouldAnimate = isFirstDashboardRender();
 
     return (
         <motion.div
             className={cn(
-                'rounded-xl p-6 shadow-sm hover:shadow-xl transition-shadow duration-300 cursor-pointer',
+                'rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer',
                 styles.container,
                 className
             )}
             variants={fadeInUp}
-            initial="initial"
+            initial={shouldAnimate ? "initial" : false}
             animate="animate"
-            transition={{ delay: delay * 0.1 }}
-            whileHover={{ y: -4, transition: spring.stiff }}
-            whileTap={{ scale: 0.98 }}
+            transition={{ delay: shouldAnimate ? delay * 0.05 : 0 }}
+            whileHover={{ y: -2, transition: spring.stiff }}
+            whileTap={{ scale: 0.99 }}
         >
             {/* Header */}
             <div className="flex items-start justify-between mb-6">

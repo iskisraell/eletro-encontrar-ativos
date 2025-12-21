@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { fetchEquipment, fetchPanelsLayer, fetchMainLayer } from './services/api';
 import { layerCache } from './services/layerCache';
 import { stackLayers, createPanelsMap, batchAttachPanelData } from './services/layerStacker';
@@ -10,6 +10,7 @@ import FilterBar from './components/FilterBar';
 import TabNavigation from './components/TabNavigation';
 import PanelsSyncIndicator from './components/PanelsSyncIndicator';
 import { Dashboard } from './components/dashboard';
+import { Skeleton } from './components/ui/Skeleton';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
 import AnimatedPlaceholder from './components/AnimatedPlaceholder';
 import { useDarkMode } from './hooks/useDarkMode';
@@ -45,6 +46,7 @@ function App() {
 
   // Pagination State (Client-side)
   const [visibleCount, setVisibleCount] = useState(24);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Filter & Sort State
   const [filters, setFilters] = useState({
@@ -287,23 +289,23 @@ function App() {
 
 
 
-  const handleLogoClick = () => {
+  const handleLogoClick = useCallback(() => {
     if (window.matchMedia('(min-width: 768px)').matches) {
       // Desktop: Scroll to top
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
       // Mobile: Toggle filter
-      setIsFilterOpen(!isFilterOpen);
+      setIsFilterOpen(prev => !prev);
     }
-  };
+  }, []);
 
-  const handleCardClick = (item: Equipment | MergedEquipment) => {
+  const handleCardClick = useCallback((item: Equipment | MergedEquipment) => {
     setSelectedItem(item as MergedEquipment);
-  };
+  }, []);
 
-  const closeDetail = () => {
+  const closeDetail = useCallback(() => {
     setSelectedItem(null);
-  };
+  }, []);
 
   // Extract unique options for filters
   const filterOptions = useMemo(() => {
@@ -511,19 +513,30 @@ function App() {
     return result;
   }, [data, filters, sort, featureFilters]);
 
-  const handleLoadMore = () => {
-    setVisibleCount(prev => prev + 24);
-  };
+  const handleLoadMore = useCallback(() => {
+    if (isLoadingMore || loading) return;
+    
+    setIsLoadingMore(true);
+    // Add a small delay to make the automatic loading feel intentional and premium
+    setTimeout(() => {
+      setVisibleCount(prev => prev + 24);
+      setIsLoadingMore(false);
+    }, 450);
+  }, [isLoadingMore, loading]);
 
-  // Infinite Scroll Observer
   useEffect(() => {
+    if (loading || error || visibleCount >= filteredAndSortedData.length || isLoadingMore) return;
+
     const observer = new IntersectionObserver(
       entries => {
-        if (entries[0].isIntersecting && !loading && !error && visibleCount < filteredAndSortedData.length) {
+        if (entries[0].isIntersecting) {
           handleLoadMore();
         }
       },
-      { threshold: 0.1 }
+      { 
+        threshold: 0.1,
+        rootMargin: '100px' // Start loading a bit before reaching the end
+      }
     );
 
     if (observerTarget.current) {
@@ -535,7 +548,7 @@ function App() {
         observer.unobserve(observerTarget.current);
       }
     };
-  }, [loading, error, visibleCount, filteredAndSortedData.length]);
+  }, [loading, error, visibleCount, filteredAndSortedData.length, isLoadingMore, handleLoadMore]);
 
   // Reset pagination when filters or sort change
   useEffect(() => {
@@ -545,11 +558,11 @@ function App() {
   // Slice data for display
   const visibleData = filteredAndSortedData.slice(0, visibleCount);
 
-  const handleFilterChange = (key: string, value: any) => {
+  const handleFilterChange = useCallback((key: string, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
-  };
+  }, []);
 
-  const handleSortChange = (field: string) => {
+  const handleSortChange = useCallback((field: string) => {
     setSort(prev => {
       if (prev.field === field) {
         return {
@@ -559,9 +572,9 @@ function App() {
       }
       return { field, direction: 'asc' };
     });
-  };
+  }, []);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setFilters({
       workArea: [],
       neighborhood: [],
@@ -572,47 +585,44 @@ function App() {
     });
     setSort({ field: '', direction: 'asc' });
     setFeatureFilters([]);
-  };
+  }, []);
 
-  const handlePanelFilterChange = (displayValue: string) => {
+  const handlePanelFilterChange = useCallback((displayValue: string) => {
     // Map display name to filter key
     const filterKey = displayValue === 'Painel Digital' ? 'digital'
       : displayValue === 'Painel Estático' ? 'static'
         : 'none';
 
-    // Show toast based on current state (before update)
-    const isSelected = filters.panelType.includes(filterKey);
-    showFilterToast(isSelected ? 'remove' : 'add', 'Painéis', displayValue);
-
     setFilters(prev => {
       // Re-calculate based on prev to ensure state consistency
       const isSelectedInPrev = prev.panelType.includes(filterKey);
+      
+      // Show toast based on current state
+      showFilterToast(isSelectedInPrev ? 'remove' : 'add', 'Painéis', displayValue);
+      
       const newValues = isSelectedInPrev
         ? prev.panelType.filter(v => v !== filterKey)
         : [...prev.panelType, filterKey];
 
       return { ...prev, panelType: newValues };
     });
-  };
+  }, [showFilterToast]);
 
   /**
    * Handle chart element clicks - implements toggle behavior
    * If value is already in the filter array → remove it
    * If value is not in the filter array → add it
    */
-  const handleChartFilterChange = (filterKey: string, value: string) => {
-    // Show toast based on current state (before update)
-    const currentValues = filters[filterKey as keyof typeof filters];
-    if (Array.isArray(currentValues)) {
-      const isSelected = currentValues.includes(value);
-      showFilterToast(isSelected ? 'remove' : 'add', filterKey, value);
-    }
-
+  const handleChartFilterChange = useCallback((filterKey: string, value: string) => {
     setFilters(prev => {
       const currentValues = prev[filterKey as keyof typeof prev];
 
       if (Array.isArray(currentValues)) {
         const isSelected = currentValues.includes(value);
+        
+        // Show toast based on current state
+        showFilterToast(isSelected ? 'remove' : 'add', filterKey, value);
+        
         const newValues = isSelected
           ? currentValues.filter(v => v !== value)
           : [...currentValues, value];
@@ -622,24 +632,22 @@ function App() {
 
       return prev;
     });
-  };
+  }, [showFilterToast]);
 
 
   /**
    * Handle feature chart clicks - toggle feature filters
    * These filters are hidden (not in FilterBar) and only accessible via FeaturesChart
    */
-  const handleFeatureFilterChange = (featureName: string) => {
+  const handleFeatureFilterChange = useCallback((featureName: string) => {
     setFeatureFilters(prev => {
       const isSelected = prev.includes(featureName);
       return isSelected
         ? prev.filter(f => f !== featureName)
         : [...prev, featureName];
     });
-  };
+  }, []);
 
-  // Determine if we should show Load More button:
-  const showLoadMore = !loading && !error && visibleCount < filteredAndSortedData.length;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
@@ -733,10 +741,10 @@ function App() {
       />
 
 
-      {/* Main Content - Both tabs stay mounted to preserve state */}
+      {/* Main Content - Conditional rendering to avoid unnecessary re-renders */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Dashboard Tab Content */}
-        <div className={activeTab === 'dashboard' ? 'block' : 'hidden'}>
+        {/* Dashboard Tab Content - Only rendered when active */}
+        {activeTab === 'dashboard' && (
           <Dashboard
             equipment={filteredAndSortedData}
             isLoading={loading && data.length === 0}
@@ -746,29 +754,30 @@ function App() {
             featureFilters={featureFilters}
             onFeatureFilterChange={handleFeatureFilterChange}
           />
-        </div>
+        )}
 
         {/* Equipment List Tab Content */}
-        <div className={activeTab === 'list' ? 'block' : 'hidden'}>
-          {/* Status/Error Messages */}
-          {error && (
-            <div className="bg-red-50/80 dark:bg-red-900/20 backdrop-blur-sm px-5 py-3 rounded-2xl mb-6 flex items-center gap-3 animate-fade-in shadow-sm border border-red-100 dark:border-red-800/30">
-              <div className="flex-shrink-0 w-8 h-8 bg-red-100 dark:bg-red-800/40 rounded-full flex items-center justify-center">
-                <AlertIcon className="text-red-500 dark:text-red-400 w-4 h-4" />
+        {activeTab === 'list' && (
+          <>
+            {/* Status/Error Messages */}
+            {error && (
+              <div className="bg-red-50/80 dark:bg-red-900/20 backdrop-blur-sm px-5 py-3 rounded-2xl mb-6 flex items-center gap-3 animate-fade-in shadow-sm border border-red-100 dark:border-red-800/30">
+                <div className="flex-shrink-0 w-8 h-8 bg-red-100 dark:bg-red-800/40 rounded-full flex items-center justify-center">
+                  <AlertIcon className="text-red-500 dark:text-red-400 w-4 h-4" />
+                </div>
+                <p className="text-red-600 dark:text-red-300 text-sm font-medium">{error}</p>
               </div>
-              <p className="text-red-600 dark:text-red-300 text-sm font-medium">{error}</p>
-            </div>
-          )}
+            )}
 
-          {!loading && !error && filteredAndSortedData.length === 0 && (
-            <div className="text-center py-20">
-              <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <SearchIcon className="text-gray-400 w-8 h-8" />
+            {!loading && !error && filteredAndSortedData.length === 0 && (
+              <div className="text-center py-20">
+                <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <SearchIcon className="text-gray-400 w-8 h-8" />
+                </div>
+                <h3 className="text-gray-600 dark:text-gray-300 font-medium text-lg">Nenhum equipamento encontrado</h3>
+                <p className="text-gray-400 dark:text-gray-500">Tente ajustar seus filtros ou buscar por outro termo.</p>
               </div>
-              <h3 className="text-gray-600 dark:text-gray-300 font-medium text-lg">Nenhum equipamento encontrado</h3>
-              <p className="text-gray-400 dark:text-gray-500">Tente ajustar seus filtros ou buscar por outro termo.</p>
-            </div>
-          )}
+            )}
 
           {/* Results Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -779,6 +788,7 @@ function App() {
                 <EquipmentCard
                   key={key}
                   item={item}
+                  index={index % 24} // Stagger only within the current batch
                   onClick={handleCardClick}
                 />
               );
@@ -801,24 +811,50 @@ function App() {
             </div>
           )}
 
-          {/* Load More Button & Sentinel */}
-          {showLoadMore && (
-            <div className="mt-12 flex flex-col items-center justify-center">
-              <button
-                onClick={handleLoadMore}
-                className="group relative flex items-center justify-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-md hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
-              >
+          {/* Load More Sentinel & Indicator */}
+          {filteredAndSortedData.length > visibleCount && (
+            <div className="mt-16 flex flex-col items-center justify-center py-12 border-t border-gray-100 dark:border-gray-800/50">
+              <div ref={observerTarget} className="flex flex-col items-center gap-4">
+                {isLoadingMore ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-eletro-orange rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                      <div className="w-2.5 h-2.5 bg-eletro-orange rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-2.5 h-2.5 bg-eletro-orange rounded-full animate-bounce"></div>
+                    </div>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm font-medium animate-pulse">
+                      Carregando mais equipamentos...
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full"></div>
+                    <p className="text-gray-400 dark:text-gray-500 text-xs font-medium uppercase tracking-widest">
+                      Continue navegando para carregar mais
+                    </p>
+                  </div>
+                )}
+                
+                <div className="mt-2 px-4 py-1.5 bg-gray-100 dark:bg-gray-800/50 rounded-full">
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                    {Math.min(visibleCount, filteredAndSortedData.length)} de {filteredAndSortedData.length} exibidos
+                  </span>
+                </div>
 
-                Carregar Mais
-                <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
-                  ({visibleCount} de {filteredAndSortedData.length} exibidos)
-                </span>
-              </button>
-              {/* Sentinel for Infinite Scroll */}
-              <div ref={observerTarget} className="h-4 w-full"></div>
+                {/* Manual Fallback for accessibility or slower connections */}
+                {!isLoadingMore && (
+                  <button
+                    onClick={handleLoadMore}
+                    className="mt-4 text-xs text-eletro-orange hover:underline font-medium opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    Carregar agora
+                  </button>
+                )}
+              </div>
             </div>
           )}
-        </div>
+          </>
+        )}
       </main>
 
       {/* Detail Panel (Modal/Slide-over) */}

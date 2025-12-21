@@ -55,7 +55,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-export const FeaturesChart: React.FC<FeaturesChartProps> = ({
+const FeaturesChartComponent: React.FC<FeaturesChartProps> = ({
     data,
     total,
     delay = 0,
@@ -185,5 +185,8 @@ export const FeaturesChart: React.FC<FeaturesChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const FeaturesChart = React.memo(FeaturesChartComponent);
 
 export default FeaturesChart;

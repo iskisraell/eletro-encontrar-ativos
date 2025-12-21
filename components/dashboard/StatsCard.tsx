@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { cn, formatNumber } from '../../lib/utils';
 import { fadeInUp, spring } from '../../lib/animations';
+import { isFirstDashboardRender } from '../../hooks/useDashboardAnimation';
 
 interface StatsCardProps {
     title: string;
@@ -41,16 +42,35 @@ const variantStyles = {
     },
 };
 
-// Animated counter hook
-const useCountUp = (end: number, duration: number = 1500) => {
-    const [count, setCount] = useState(0);
+// Animated counter hook - only animates on first render or value changes
+const useCountUp = (end: number, shouldAnimate: boolean, duration: number = 800) => {
+    const [count, setCount] = useState(shouldAnimate ? 0 : end);
+    const prevValue = useRef(end);
+    const hasAnimatedInitial = useRef(!shouldAnimate);
 
     useEffect(() => {
-        if (end === 0) {
-            setCount(0);
+        // If we shouldn't animate or value hasn't changed, just set directly
+        if (!shouldAnimate && !hasAnimatedInitial.current) {
+            setCount(end);
+            hasAnimatedInitial.current = true;
+            prevValue.current = end;
             return;
         }
 
+        // Skip animation if value didn't change
+        if (prevValue.current === end && hasAnimatedInitial.current) {
+            return;
+        }
+
+        if (end === 0) {
+            setCount(0);
+            prevValue.current = end;
+            return;
+        }
+
+        const startValue = hasAnimatedInitial.current ? prevValue.current : 0;
+        const diff = end - startValue;
+        
         let startTime: number;
         let animationFrame: number;
 
@@ -58,27 +78,25 @@ const useCountUp = (end: number, duration: number = 1500) => {
             if (!startTime) startTime = timestamp;
             const progress = Math.min((timestamp - startTime) / duration, 1);
 
-            // Easing function (easeOutExpo)
+            // Easing function (easeOutExpo) - faster
             const easeOutExpo = 1 - Math.pow(2, -10 * progress);
-            setCount(Math.floor(easeOutExpo * end));
+            setCount(Math.floor(startValue + easeOutExpo * diff));
 
             if (progress < 1) {
                 animationFrame = requestAnimationFrame(animate);
             } else {
                 setCount(end);
+                hasAnimatedInitial.current = true;
+                prevValue.current = end;
             }
         };
 
-        // Small delay before starting animation
-        const timeout = setTimeout(() => {
-            animationFrame = requestAnimationFrame(animate);
-        }, 100);
+        animationFrame = requestAnimationFrame(animate);
 
         return () => {
-            clearTimeout(timeout);
             if (animationFrame) cancelAnimationFrame(animationFrame);
         };
-    }, [end, duration]);
+    }, [end, duration, shouldAnimate]);
 
     return count;
 };
@@ -94,22 +112,24 @@ export const StatsCard: React.FC<StatsCardProps> = ({
     delay = 0,
 }) => {
     const styles = variantStyles[variant];
-    const animatedValue = useCountUp(value);
+    // Only animate on first dashboard render or when value changes
+    const shouldAnimate = isFirstDashboardRender();
+    const animatedValue = useCountUp(value, shouldAnimate);
 
     return (
         <motion.div
             className={cn(
-                'rounded-xl p-6 shadow-sm hover:shadow-xl transition-shadow duration-300 cursor-pointer overflow-hidden relative',
+                'rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer overflow-hidden relative',
                 styles.container,
                 className
             )}
             variants={fadeInUp}
-            initial="initial"
+            initial={shouldAnimate ? "initial" : false}
             animate="animate"
             custom={delay}
-            transition={{ delay: delay * 0.1 }}
-            whileHover={{ y: -4, transition: spring.stiff }}
-            whileTap={{ scale: 0.98 }}
+            transition={{ delay: shouldAnimate ? delay * 0.05 : 0 }}
+            whileHover={{ y: -2, transition: spring.stiff }}
+            whileTap={{ scale: 0.99 }}
         >
             <div className="flex items-start justify-between">
                 <div className="space-y-1">

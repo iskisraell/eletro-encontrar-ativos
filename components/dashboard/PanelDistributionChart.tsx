@@ -43,7 +43,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-export const PanelDistributionChart: React.FC<PanelDistributionChartProps> = ({
+const PanelDistributionChartComponent: React.FC<PanelDistributionChartProps> = ({
     data,
     totalEquipmentWithDigital,
     totalEquipmentWithStatic,
@@ -194,5 +194,8 @@ export const PanelDistributionChart: React.FC<PanelDistributionChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const PanelDistributionChart = React.memo(PanelDistributionChartComponent);
 
 export default PanelDistributionChart;

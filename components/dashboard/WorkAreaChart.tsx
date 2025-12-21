@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
     BarChart,
     Bar,
@@ -58,7 +58,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-export const WorkAreaChart: React.FC<WorkAreaChartProps> = ({
+const WorkAreaChartComponent: React.FC<WorkAreaChartProps> = ({
     data,
     delay = 0,
     selectedValues = [],
@@ -149,5 +149,8 @@ export const WorkAreaChart: React.FC<WorkAreaChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const WorkAreaChart = React.memo(WorkAreaChartComponent);
 
 export default WorkAreaChart;

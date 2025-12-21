@@ -71,7 +71,7 @@ const CustomLegend = () => (
     </div>
 );
 
-export const PanelsByShelterChart: React.FC<PanelsByShelterChartProps> = ({
+const PanelsByShelterChartComponent: React.FC<PanelsByShelterChartProps> = ({
     data,
     delay = 0,
     selectedValues = [],
@@ -165,5 +165,8 @@ export const PanelsByShelterChart: React.FC<PanelsByShelterChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const PanelsByShelterChart = React.memo(PanelsByShelterChartComponent);
 
 export default PanelsByShelterChart;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
     LayoutDashboard,
@@ -25,6 +25,7 @@ import { PanelDistributionChart } from './PanelDistributionChart';
 import { PanelsByShelterChart } from './PanelsByShelterChart';
 import { PanelsByAreaChart } from './PanelsByAreaChart';
 import { SkeletonStatsCard, SkeletonChart } from '../ui/Skeleton';
+import { markDashboardAnimated, isFirstDashboardRender } from '../../hooks/useDashboardAnimation';
 
 interface DashboardProps {
     equipment: (Equipment | MergedEquipment)[];
@@ -45,7 +46,7 @@ interface DashboardProps {
     onFeatureFilterChange?: (featureName: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({
+const DashboardComponent: React.FC<DashboardProps> = ({
     equipment,
     isLoading = false,
     filters,
@@ -65,6 +66,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
         panelsByShelterModel,
         panelsByWorkArea
     } = useDashboardStats(equipment);
+
+    // Mark animations as played after first render
+    useEffect(() => {
+        // Small delay to ensure animations have started
+        const timer = setTimeout(() => {
+            markDashboardAnimated();
+        }, 500);
+        return () => clearTimeout(timer);
+    }, []);
 
     if (isLoading) {
         return (
@@ -348,5 +358,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </motion.div>
     );
 };
+
+// Memoized Dashboard component to prevent unnecessary re-renders
+export const Dashboard = React.memo(DashboardComponent);
 
 export default Dashboard;

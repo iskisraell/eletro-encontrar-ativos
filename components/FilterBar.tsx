@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronDown, PanelTop } from 'lucide-react';
 import MultiSelectDropdown from './MultiSelectDropdown';
 
@@ -129,16 +129,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
         });
     };
 
-    const hasActiveFilters =
+    // Memoize computed values to prevent recreation on every render
+    const hasActiveFilters = useMemo(() =>
         filters.workArea.length > 0 ||
         filters.neighborhood.length > 0 ||
         filters.shelterModel.length > 0 ||
         filters.riskArea.length > 0 ||
         filters.panelType.length > 0 ||
         filters.hasPhoto ||
-        featureFilters.length > 0;
+        featureFilters.length > 0,
+    [filters, featureFilters]);
 
-    const activePills = [
+    const activePills = useMemo(() => [
         ...filters.workArea.map(v => ({ key: 'workArea', label: v, value: v })),
         ...filters.neighborhood.map(v => ({ key: 'neighborhood', label: v, value: v })),
         ...filters.shelterModel.map(v => ({ key: 'shelterModel', label: v, value: v })),
@@ -150,7 +152,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
         })),
         ...(filters.hasPhoto ? [{ key: 'hasPhoto', label: 'Com Foto', value: true }] : []),
         ...featureFilters.map(f => ({ key: 'feature', label: f, value: f }))
-    ];
+    ], [filters, featureFilters]);
 
     const activeCount = activePills.length;
 
@@ -171,7 +173,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
         <div className="flex flex-col w-full">
             <motion.div 
                 layout
-                className={`flex items-center justify-between ${!mobileView && isCollapsed ? 'mb-0' : 'mb-4'}`}
+                className={`flex items-center justify-between min-h-[44px] ${!mobileView && isCollapsed ? 'mb-0' : 'mb-4'}`}
             >
                 <motion.div layout className="flex flex-1 min-w-0">
                     <motion.div 
@@ -253,68 +255,91 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     )}
 
                     {!mobileView && (
-                        <motion.button
-                            layout
-                            onClick={handleToggleCollapse}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 ml-auto flex-shrink-0"
-                            whileHover={{ scale: 1.1, backgroundColor: 'rgba(255, 79, 0, 0.1)' }}
-                            whileTap={{ scale: 0.9 }}
-                        >
-                            <motion.div
+                        <LayoutGroup>
+                            <motion.div 
                                 layout
-                                animate={{ rotate: isCollapsed ? 0 : 180 }}
-                                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                                className="flex items-center ml-auto flex-shrink-0"
+                                transition={{ 
+                                    type: 'spring', 
+                                    stiffness: 400, 
+                                    damping: 30 
+                                }}
                             >
-                                <ChevronDown className="w-5 h-5" />
+                                <AnimatePresence mode="wait">
+                                    {activeTab === 'list' && (
+                                        <motion.div 
+                                            key="sorter"
+                                            layout
+                                            initial={{ opacity: 0, scale: 0.95, x: 20 }}
+                                            animate={{ opacity: 1, scale: 1, x: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, x: 20 }}
+                                            transition={{ 
+                                                type: 'spring', 
+                                                stiffness: 400, 
+                                                damping: 30 
+                                            }}
+                                            className="flex items-center space-x-2 mr-2"
+                                        >
+                                            <div className="w-40">
+                                                <MultiSelectDropdown
+                                                    label="Ordenar"
+                                                    icon={<SortAsc className="h-4 w-4" />}
+                                                    options={["Padrão", "ID", "Bairro", "Modelo"]}
+                                                    selected={
+                                                        sort.field === "Nº Eletro" ? ["ID"] :
+                                                            sort.field === "Bairro" ? ["Bairro"] :
+                                                                sort.field === "Modelo de Abrigo" ? ["Modelo"] :
+                                                                    ["Padrão"]
+                                                    }
+                                                    onChange={(val) => {
+                                                        const selectedLabel = val[0];
+                                                        let field = "";
+                                                        if (selectedLabel === "ID") field = "Nº Eletro";
+                                                        else if (selectedLabel === "Bairro") field = "Bairro";
+                                                        else if (selectedLabel === "Modelo") field = "Modelo de Abrigo";
+                                                        onSortChange(field);
+                                                    }}
+                                                    singleSelect={true}
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={() => onSortChange(sort.field)}
+                                                disabled={!sort.field}
+                                                className={`p-2 rounded-md border transition-colors ${!sort.field
+                                                    ? 'text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                                                    : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 bg-white dark:bg-gray-800'}`}
+                                            >
+                                                {sort.direction === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                                <motion.button
+                                    layout
+                                    onClick={handleToggleCollapse}
+                                    className="p-1.5 rounded-lg transition-colors text-gray-400 dark:text-gray-500 hover:text-eletro-orange flex-shrink-0"
+                                    whileHover={{ 
+                                        scale: 1.1, 
+                                        backgroundColor: 'rgba(255, 79, 0, 0.1)',
+                                    }}
+                                    whileTap={{ scale: 0.95 }}
+                                    transition={{ 
+                                        type: 'spring', 
+                                        stiffness: 400, 
+                                        damping: 30 
+                                    }}
+                                >
+                                    <motion.div
+                                        animate={{ rotate: isCollapsed ? 0 : 180 }}
+                                        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                                    >
+                                        <ChevronDown className="w-5 h-5" />
+                                    </motion.div>
+                                </motion.button>
                             </motion.div>
-                        </motion.button>
+                        </LayoutGroup>
                     )}
                 </motion.div>
-
-                <AnimatePresence>
-                    {!mobileView && activeTab === 'list' && (
-                        <motion.div 
-                            layout
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.2, ease: "easeInOut" }}
-                            className="flex items-center space-x-2 ml-4 flex-shrink-0"
-                        >
-                            <div className="w-40">
-                                <MultiSelectDropdown
-                                    label="Ordenar"
-                                    icon={<SortAsc className="h-4 w-4" />}
-                                    options={["Padrão", "ID", "Bairro", "Modelo"]}
-                                    selected={
-                                        sort.field === "Nº Eletro" ? ["ID"] :
-                                            sort.field === "Bairro" ? ["Bairro"] :
-                                                sort.field === "Modelo de Abrigo" ? ["Modelo"] :
-                                                    ["Padrão"]
-                                    }
-                                    onChange={(val) => {
-                                        const selectedLabel = val[0];
-                                        let field = "";
-                                        if (selectedLabel === "ID") field = "Nº Eletro";
-                                        else if (selectedLabel === "Bairro") field = "Bairro";
-                                        else if (selectedLabel === "Modelo") field = "Modelo de Abrigo";
-                                        onSortChange(field);
-                                    }}
-                                    singleSelect={true}
-                                />
-                            </div>
-                            <button
-                                onClick={() => onSortChange(sort.field)}
-                                disabled={!sort.field}
-                                className={`p-2 rounded-md border transition-colors ${!sort.field
-                                    ? 'text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
-                                    : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 bg-white dark:bg-gray-800'}`}
-                            >
-                                {sort.direction === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
-                            </button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
             </motion.div>
 
             <AnimatePresence initial={false}>

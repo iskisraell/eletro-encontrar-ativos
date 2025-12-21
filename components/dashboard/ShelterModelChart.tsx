@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
     PieChart,
     Pie,
@@ -105,7 +105,7 @@ const CustomLegend: React.FC<CustomLegendProps> = ({
     );
 };
 
-export const ShelterModelChart: React.FC<ShelterModelChartProps> = ({
+const ShelterModelChartComponent: React.FC<ShelterModelChartProps> = ({
     data,
     delay = 0,
     selectedValues = [],
@@ -206,5 +206,8 @@ export const ShelterModelChart: React.FC<ShelterModelChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const ShelterModelChart = React.memo(ShelterModelChartComponent);
 
 export default ShelterModelChart;

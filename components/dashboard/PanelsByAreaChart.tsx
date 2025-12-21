@@ -71,7 +71,7 @@ const CustomLegend = () => (
     </div>
 );
 
-export const PanelsByAreaChart: React.FC<PanelsByAreaChartProps> = ({
+const PanelsByAreaChartComponent: React.FC<PanelsByAreaChartProps> = ({
     data,
     delay = 0,
     selectedValues = [],
@@ -174,5 +174,8 @@ export const PanelsByAreaChart: React.FC<PanelsByAreaChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const PanelsByAreaChart = React.memo(PanelsByAreaChartComponent);
 
 export default PanelsByAreaChart;

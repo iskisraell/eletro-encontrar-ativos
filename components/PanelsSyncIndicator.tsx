@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
- * Creative sync indicator for panel data synchronization.
- * Features animated bus stop/panel display with São Paulo-themed messages.
+ * Optimized sync indicator for panel data synchronization.
+ * Uses CSS animations for infinite loops instead of Framer Motion to reduce JS overhead.
  */
 
 // São Paulo bus stop and Eletromidia-themed sync messages
@@ -31,6 +31,10 @@ const MESSAGE_EMOJIS = [
   "🎯", "⚡", "🌆", "🔍", "🏗️"
 ];
 
+// Reduced grid size for better performance (3x8 instead of 5x12)
+const GRID_ROWS = 3;
+const GRID_COLS = 8;
+
 interface PanelsSyncIndicatorProps {
   isVisible: boolean;
   className?: string;
@@ -41,17 +45,9 @@ const PanelsSyncIndicator: React.FC<PanelsSyncIndicatorProps> = ({
   className = ''
 }) => {
   const [messageIndex, setMessageIndex] = useState(0);
-  const [pixelRows, setPixelRows] = useState<boolean[][]>([]);
-
-  // Initialize pixel grid
-  useEffect(() => {
-    const rows = 5;
-    const cols = 12;
-    const initialGrid = Array(rows).fill(null).map(() => 
-      Array(cols).fill(false)
-    );
-    setPixelRows(initialGrid);
-  }, []);
+  const [pixelRows, setPixelRows] = useState<boolean[][]>(() => 
+    Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(false))
+  );
 
   // Rotate messages every 2.5 seconds
   useEffect(() => {
@@ -64,31 +60,47 @@ const PanelsSyncIndicator: React.FC<PanelsSyncIndicatorProps> = ({
     return () => clearInterval(interval);
   }, [isVisible]);
 
-  // Animate pixel grid - random "scan" effect
+  // Animate pixel grid - reduced frequency (300ms instead of 150ms)
   useEffect(() => {
     if (!isVisible) return;
 
     const interval = setInterval(() => {
       setPixelRows(prev => {
         const newGrid = prev.map(row => [...row]);
-        const rows = newGrid.length;
-        const cols = newGrid[0]?.length || 0;
-        
-        // Random pixel updates for scanning effect
-        for (let i = 0; i < 8; i++) {
-          const r = Math.floor(Math.random() * rows);
-          const c = Math.floor(Math.random() * cols);
+        // Reduced updates per tick (4 instead of 8)
+        for (let i = 0; i < 4; i++) {
+          const r = Math.floor(Math.random() * GRID_ROWS);
+          const c = Math.floor(Math.random() * GRID_COLS);
           if (newGrid[r]) {
             newGrid[r][c] = !newGrid[r][c];
           }
         }
-        
         return newGrid;
       });
-    }, 150);
+    }, 300); // Reduced from 150ms to 300ms
 
     return () => clearInterval(interval);
   }, [isVisible]);
+
+  // Memoize the pixel grid to prevent recreation
+  const pixelGrid = useMemo(() => (
+    <div className="relative z-10 flex flex-col gap-1">
+      {pixelRows.map((row, rowIndex) => (
+        <div key={rowIndex} className="flex gap-1 justify-center">
+          {row.map((isLit, colIndex) => (
+            <div
+              key={`${rowIndex}-${colIndex}`}
+              className={`w-3 h-3 rounded-sm transition-all duration-200 ${
+                isLit 
+                  ? 'bg-eletro-orange shadow-lg shadow-orange-500/50 scale-110' 
+                  : 'bg-gray-800 scale-100'
+              }`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  ), [pixelRows]);
 
   return (
     <AnimatePresence>
@@ -109,67 +121,25 @@ const PanelsSyncIndicator: React.FC<PanelsSyncIndicatorProps> = ({
               <div className="mb-4">
                 {/* Panel frame */}
                 <div className="bg-gray-950 rounded-lg p-3 border-2 border-gray-600 shadow-inner relative overflow-hidden">
-                  {/* Glow effect */}
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-cyan-500/10"
-                    animate={{
-                      opacity: [0.3, 0.6, 0.3],
-                    }}
-                    transition={{
-                      duration: 2,
-                      repeat: Infinity,
-                      ease: "easeInOut"
-                    }}
-                  />
+                  {/* Glow effect - CSS animation instead of Framer Motion */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-cyan-500/10 sync-glow" />
                   
                   {/* Pixel Grid */}
-                  <div className="relative z-10 flex flex-col gap-1">
-                    {pixelRows.map((row, rowIndex) => (
-                      <div key={rowIndex} className="flex gap-1 justify-center">
-                        {row.map((isLit, colIndex) => (
-                          <motion.div
-                            key={`${rowIndex}-${colIndex}`}
-                            className={`w-3 h-3 rounded-sm ${
-                              isLit 
-                                ? 'bg-eletro-orange shadow-lg shadow-orange-500/50' 
-                                : 'bg-gray-800'
-                            }`}
-                            animate={{
-                              scale: isLit ? [1, 1.1, 1] : 1,
-                            }}
-                            transition={{
-                              duration: 0.3,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                  {pixelGrid}
 
-                  {/* Scanline effect */}
-                  <motion.div
-                    className="absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent"
-                    animate={{
-                      top: ['0%', '100%', '0%'],
-                    }}
-                    transition={{
-                      duration: 3,
-                      repeat: Infinity,
-                      ease: "linear"
-                    }}
-                  />
+                  {/* Scanline effect - CSS animation instead of Framer Motion */}
+                  <div className="absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent sync-scanline" />
                 </div>
               </div>
 
               {/* Message Display */}
               <div className="flex items-center gap-3">
-                {/* Animated emoji */}
+                {/* Animated emoji - keep Framer Motion for key-based animation */}
                 <motion.span
                   key={messageIndex}
                   className="text-2xl"
                   initial={{ scale: 0, rotate: -180 }}
                   animate={{ scale: 1, rotate: 0 }}
-                  exit={{ scale: 0, rotate: 180 }}
                   transition={{ type: "spring", stiffness: 400, damping: 15 }}
                 >
                   {MESSAGE_EMOJIS[messageIndex % MESSAGE_EMOJIS.length]}
@@ -191,33 +161,16 @@ const PanelsSyncIndicator: React.FC<PanelsSyncIndicatorProps> = ({
                   </AnimatePresence>
                 </div>
 
-                {/* Spinning loader */}
-                <motion.div
-                  className="w-5 h-5 border-2 border-eletro-orange border-t-transparent rounded-full"
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                    ease: "linear"
-                  }}
-                />
+                {/* Spinning loader - CSS animation instead of Framer Motion */}
+                <div className="w-5 h-5 border-2 border-eletro-orange border-t-transparent rounded-full sync-spin" />
               </div>
 
-              {/* Progress dots */}
+              {/* Progress dots - CSS animations instead of Framer Motion */}
               <div className="flex justify-center gap-1 mt-3">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <motion.div
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div
                     key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-eletro-orange"
-                    animate={{
-                      scale: [1, 1.5, 1],
-                      opacity: [0.3, 1, 0.3],
-                    }}
-                    transition={{
-                      duration: 1.2,
-                      repeat: Infinity,
-                      delay: i * 0.15,
-                    }}
+                    className={`w-1.5 h-1.5 rounded-full bg-eletro-orange sync-dot sync-dot-${i}`}
                   />
                 ))}
               </div>
@@ -240,4 +193,4 @@ const PanelsSyncIndicator: React.FC<PanelsSyncIndicatorProps> = ({
   );
 };
 
-export default PanelsSyncIndicator;
+export default React.memo(PanelsSyncIndicator);

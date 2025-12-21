@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
     PieChart,
     Pie,
@@ -53,7 +53,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-export const BranchChart: React.FC<BranchChartProps> = ({
+const BranchChartComponent: React.FC<BranchChartProps> = ({
     data,
     delay = 0,
     selectedValues = [],
@@ -184,5 +184,8 @@ export const BranchChart: React.FC<BranchChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const BranchChart = React.memo(BranchChartComponent);
 
 export default BranchChart;

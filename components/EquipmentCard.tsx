@@ -16,7 +16,7 @@ const hasPanelData = (item: Equipment | MergedEquipment): item is MergedEquipmen
   return '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item && item._panelData !== undefined;
 };
 
-const EquipmentCard: React.FC<EquipmentCardProps> = ({ item, onClick, index = 0 }) => {
+const EquipmentCardComponent: React.FC<EquipmentCardProps> = ({ item, onClick, index = 0 }) => {
   // Fallback image if "Foto Referência" is missing or broken
   const imageUrl = item["Foto Referência"] || placeholderImg;
   const id = item["Nº Eletro"] || 'Sem ID';
@@ -94,5 +94,14 @@ const EquipmentCard: React.FC<EquipmentCardProps> = ({ item, onClick, index = 0 
     </motion.div>
   );
 };
+
+// Memoized component with custom comparison to prevent unnecessary re-renders
+const EquipmentCard = React.memo(EquipmentCardComponent, (prevProps, nextProps) => {
+  // Only re-render if the equipment ID changes or onClick reference changes
+  return (
+    prevProps.item["Nº Eletro"] === nextProps.item["Nº Eletro"] &&
+    prevProps.index === nextProps.index
+  );
+});
 
 export default EquipmentCard;

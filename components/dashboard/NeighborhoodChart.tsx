@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
     BarChart,
     Bar,
@@ -43,7 +43,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
+const NeighborhoodChartComponent: React.FC<NeighborhoodChartProps> = ({
     data,
     delay = 0,
     selectedValues = [],
@@ -139,5 +139,8 @@ export const NeighborhoodChart: React.FC<NeighborhoodChartProps> = ({
         </ChartCard>
     );
 };
+
+// Memoized chart component to prevent unnecessary re-renders
+export const NeighborhoodChart = React.memo(NeighborhoodChartComponent);
 
 export default NeighborhoodChart;

@@ -157,7 +157,7 @@ const PanelDetailCard: React.FC<{
   );
 };
 
-const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
+const DetailPanelComponent: React.FC<DetailPanelProps> = ({ item, onClose }) => {
   const [isImageModalOpen, setIsImageModalOpen] = React.useState(false);
 
   const openImageModal = () => setIsImageModalOpen(true);
@@ -448,5 +448,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
     </AnimatePresence>
   );
 };
+
+// Memoized DetailPanel component to prevent unnecessary re-renders
+const DetailPanel = React.memo(DetailPanelComponent);
 
 export default DetailPanel;

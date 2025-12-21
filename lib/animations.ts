@@ -30,18 +30,18 @@ export const fadeOnly: Variants = {
     }
 };
 
-// Fade in from bottom animation - reduced distance
+// Fade in from bottom animation - reduced distance and faster
 export const fadeInUp: Variants = {
-    initial: { opacity: 0, y: 10 },
+    initial: { opacity: 0, y: 6 },
     animate: {
         opacity: 1,
         y: 0,
-        transition: { duration: 0.2, ease: [0.4, 0, 0.2, 1] }
+        transition: { duration: 0.15, ease: [0.4, 0, 0.2, 1] }
     },
     exit: {
         opacity: 0,
-        y: -5,
-        transition: { duration: 0.15 }
+        y: -4,
+        transition: { duration: 0.1 }
     }
 };
 
@@ -95,8 +95,8 @@ export const staggerContainer: Variants = {
     initial: {},
     animate: {
         transition: {
-            staggerChildren: 0.03,
-            delayChildren: 0.05
+            staggerChildren: 0.02,
+            delayChildren: 0.02
         }
     }
 };
