@@ -2,7 +2,6 @@ import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
-import RBush from 'rbush';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MergedEquipment } from '../types';
 import { useIsDark } from '../hooks/useDarkMode';
@@ -12,7 +11,6 @@ import { cn } from '../lib/utils';
 import { 
   mapDataCache,
   MapMarkerData as CacheMarkerData,
-  MapFiltersState as ImportedMapFiltersState,
 } from '../services/mapDataCache';
 
 // Import Leaflet CSS directly in JS for reliable loading
@@ -27,16 +25,11 @@ const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.p
 const TILE_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-// Performance constants
-const CHUNK_SIZE = 500; // Process 500 markers per chunk
-const CHUNK_DELAY = 16; // ~60fps delay between chunks
-const VIEWPORT_PADDING = 0.1; // 10% padding outside viewport
-const SPATIAL_INDEX_THRESHOLD = 3000; // Use R-tree when markers exceed this count
+// Performance constants - optimized for 12k+ markers
+const CHUNK_SIZE = 2000; // Process 2000 markers per chunk (larger = fewer iterations)
+const CHUNK_DELAY = 32; // ~30fps delay between chunks
 
-// Cluster icon cache for Phase 6 optimization
-const clusterIconCache = new Map<string, L.DivIcon>();
-
-// Custom cluster icon creator - optimized with caching
+// Custom cluster icon creator - simple, no caching (L.divIcon is cheap)
 const createClusterCustomIcon = (cluster: any) => {
   const count = cluster.getChildCount();
   let size = 'small';
@@ -50,28 +43,11 @@ const createClusterCustomIcon = (cluster: any) => {
     dimensions = 44;
   }
 
-  // Create cache key based on count ranges for better cache hits
-  const cacheKey = count >= 1000 
-    ? `${size}-${Math.floor(count / 100) * 100}` // Round to nearest 100 for large counts
-    : count >= 100 
-      ? `${size}-${Math.floor(count / 10) * 10}` // Round to nearest 10 for medium counts
-      : `${size}-${count}`; // Exact count for small
-
-  // Return cached icon if available
-  if (clusterIconCache.has(cacheKey)) {
-    return clusterIconCache.get(cacheKey)!;
-  }
-
-  const icon = L.divIcon({
+  return L.divIcon({
     html: `<div>${count.toLocaleString()}</div>`,
     className: `marker-cluster marker-cluster-${size}`,
     iconSize: L.point(dimensions, dimensions, true),
   });
-
-  // Cache the icon
-  clusterIconCache.set(cacheKey, icon);
-  
-  return icon;
 };
 
 // ============================================
@@ -145,7 +121,7 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
 };
 
 // ============================================
-// TileLayerSwitcher - Handle dark/light mode tile switching with performance optimizations
+// TileLayerSwitcher - Handle dark/light mode tile switching
 // ============================================
 interface TileLayerSwitcherProps {
   isDark: boolean;
@@ -179,77 +155,16 @@ const TileLayerSwitcher: React.FC<TileLayerSwitcherProps> = ({ isDark, onLoading
     <TileLayer
       attribution={TILE_ATTRIBUTION}
       url={isDark ? TILE_DARK : TILE_LIGHT}
-      // Performance optimizations
-      keepBuffer={4}              // Keep 4 rows/cols of tiles around viewport (vs default 2)
-      updateWhenZooming={false}   // Don't reload tiles during zoom animation
-      updateWhenIdle={true}       // Only fetch tiles after movement stops
-      maxNativeZoom={18}          // Prevent over-fetching at high zoom levels
-      maxZoom={19}                // Allow zooming past native but upscale tiles
-      tileSize={256}              // Standard tile size
-      zoomOffset={0}              // No offset needed for CartoDB
-      crossOrigin="anonymous"     // Enable CORS for potential caching
+      keepBuffer={4}
+      updateWhenZooming={false}
+      updateWhenIdle={true}
+      maxNativeZoom={18}
+      maxZoom={19}
+      tileSize={256}
+      zoomOffset={0}
+      crossOrigin="anonymous"
     />
   );
-};
-
-// ============================================
-// ViewportTracker - Track map viewport for optimized rendering
-// ============================================
-interface ViewportBounds {
-  north: number;
-  south: number;
-  east: number;
-  west: number;
-}
-
-const ViewportTracker: React.FC<{
-  onBoundsChange: (bounds: ViewportBounds | null) => void;
-}> = ({ onBoundsChange }) => {
-  const map = useMapEvents({
-    moveend: () => {
-      const bounds = map.getBounds();
-      const padding = VIEWPORT_PADDING;
-      const latDiff = (bounds.getNorth() - bounds.getSouth()) * padding;
-      const lngDiff = (bounds.getEast() - bounds.getWest()) * padding;
-      
-      onBoundsChange({
-        north: bounds.getNorth() + latDiff,
-        south: bounds.getSouth() - latDiff,
-        east: bounds.getEast() + lngDiff,
-        west: bounds.getWest() - lngDiff,
-      });
-    },
-    zoomend: () => {
-      const bounds = map.getBounds();
-      const padding = VIEWPORT_PADDING;
-      const latDiff = (bounds.getNorth() - bounds.getSouth()) * padding;
-      const lngDiff = (bounds.getEast() - bounds.getWest()) * padding;
-      
-      onBoundsChange({
-        north: bounds.getNorth() + latDiff,
-        south: bounds.getSouth() - latDiff,
-        east: bounds.getEast() + lngDiff,
-        west: bounds.getWest() - lngDiff,
-      });
-    },
-  });
-
-  // Set initial bounds
-  useEffect(() => {
-    const bounds = map.getBounds();
-    const padding = VIEWPORT_PADDING;
-    const latDiff = (bounds.getNorth() - bounds.getSouth()) * padding;
-    const lngDiff = (bounds.getEast() - bounds.getWest()) * padding;
-    
-    onBoundsChange({
-      north: bounds.getNorth() + latDiff,
-      south: bounds.getSouth() - latDiff,
-      east: bounds.getEast() + lngDiff,
-      west: bounds.getWest() - lngDiff,
-    });
-  }, [map, onBoundsChange]);
-
-  return null;
 };
 
 // ============================================
@@ -526,124 +441,9 @@ interface MarkerData {
   id: string;
 }
 
-// R-tree bounding box interface for spatial indexing
-interface MarkerBBox {
-  minX: number; // longitude
-  minY: number; // latitude
-  maxX: number; // longitude
-  maxY: number; // latitude
-  marker: MarkerData;
-}
-
-// ============================================
-// LazyPopupContent - Only renders full content when popup opens (Phase 7)
-// ============================================
-interface LazyPopupContentProps {
-  item: MergedEquipment;
-  onViewDetails: (e: React.MouseEvent) => void;
-}
-
-const LazyPopupContent: React.FC<LazyPopupContentProps> = React.memo(({ item, onViewDetails }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-  
-  // Lazy load content after a short delay to prioritize popup opening
-  useEffect(() => {
-    const timer = requestAnimationFrame(() => {
-      setIsLoaded(true);
-    });
-    return () => cancelAnimationFrame(timer);
-  }, []);
-
-  // Check for photo
-  const hasPhoto = item["Foto Referência"] && item["Foto Referência"].length > 0;
-  
-  // Check for panel data - prefer merged _panelData, fallback to legacy fields
-  const hasMergedData = '_hasPanelData' in item && item._hasPanelData && '_panelData' in item;
-  
-  const hasDigital = hasMergedData && item._panelData
-    ? item._panelData.hasDigital
-    : (item["Painel Digital"] && item["Painel Digital"] !== "" && item["Painel Digital"] !== "-");
-    
-  const hasStatic = hasMergedData && item._panelData
-    ? item._panelData.hasStatic
-    : (item["Painel Estático - Tipo"] && item["Painel Estático - Tipo"] !== "" && item["Painel Estático - Tipo"] !== "-");
-
-  // Show minimal content initially, then full content
-  if (!isLoaded) {
-    return (
-      <div className="equipment-popup">
-        <div className="popup-header">
-          <span className="popup-id">{item["Nº Eletro"] || 'N/A'}</span>
-        </div>
-        <div className="text-xs text-gray-400">Carregando...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="equipment-popup">
-      {/* Header with ID and Status */}
-      <div className="popup-header">
-        <span className="popup-id">
-          {item["Nº Eletro"] || 'N/A'}
-        </span>
-        {item["Status"] && item["Status"] !== "-" && (
-          <span className={`popup-status ${item["Status"] === "Ativo" ? 'status-active' : 'status-inactive'}`}>
-            {item["Status"]}
-          </span>
-        )}
-      </div>
-      
-      {/* Model Name */}
-      <h3 className="popup-title">
-        {item["Modelo de Abrigo"] || item["Modelo"] || 'Sem modelo'}
-      </h3>
-      
-      {/* Address */}
-      {item["Endereço"] && (
-        <p className="popup-address">
-          {item["Endereço"]}
-        </p>
-      )}
-
-      {/* Quick Info Row - Shows Photo, Digital, and Static badges */}
-      <div className="popup-info-row">
-        {hasPhoto && (
-          <span className="popup-info-badge">
-            <Image className="w-3 h-3" />
-            Foto
-          </span>
-        )}
-        {hasDigital && (
-          <span className="popup-info-badge popup-info-digital">
-            <Smartphone className="w-3 h-3" />
-            Digital
-          </span>
-        )}
-        {hasStatic && (
-          <span className="popup-info-badge popup-info-static">
-            <Box className="w-3 h-3" />
-            Estático
-          </span>
-        )}
-      </div>
-
-      {/* Action Button */}
-      <button
-        onClick={onViewDetails}
-        className="popup-button"
-      >
-        Ver Detalhes
-      </button>
-    </div>
-  );
-});
-
-LazyPopupContent.displayName = 'LazyPopupContent';
-
 // ============================================
 // Optimized Marker Component using CircleMarker (Canvas-based)
-// Uses LazyPopupContent for Phase 7 optimization
+// Inline popup content - react-leaflet handles lazy rendering
 // ============================================
 const OptimizedMarker: React.FC<{
   data: MarkerData;
@@ -653,6 +453,20 @@ const OptimizedMarker: React.FC<{
     e.stopPropagation();
     onClick(data.item);
   }, [data.item, onClick]);
+
+  // Check for photo
+  const hasPhoto = data.item["Foto Referência"] && data.item["Foto Referência"].length > 0;
+  
+  // Check for panel data - prefer merged _panelData, fallback to legacy fields
+  const hasMergedData = '_hasPanelData' in data.item && data.item._hasPanelData && '_panelData' in data.item;
+  
+  const hasDigital = hasMergedData && data.item._panelData
+    ? data.item._panelData.hasDigital
+    : (data.item["Painel Digital"] && data.item["Painel Digital"] !== "" && data.item["Painel Digital"] !== "-");
+    
+  const hasStatic = hasMergedData && data.item._panelData
+    ? data.item._panelData.hasStatic
+    : (data.item["Painel Estático - Tipo"] && data.item["Painel Estático - Tipo"] !== "" && data.item["Painel Estático - Tipo"] !== "-");
 
   return (
     <CircleMarker
@@ -667,7 +481,61 @@ const OptimizedMarker: React.FC<{
       }}
     >
       <Popup className="custom-popup">
-        <LazyPopupContent item={data.item} onViewDetails={handleViewDetails} />
+        <div className="equipment-popup">
+          {/* Header with ID and Status */}
+          <div className="popup-header">
+            <span className="popup-id">
+              {data.item["Nº Eletro"] || 'N/A'}
+            </span>
+            {data.item["Status"] && data.item["Status"] !== "-" && (
+              <span className={`popup-status ${data.item["Status"] === "Ativo" ? 'status-active' : 'status-inactive'}`}>
+                {data.item["Status"]}
+              </span>
+            )}
+          </div>
+          
+          {/* Model Name */}
+          <h3 className="popup-title">
+            {data.item["Modelo de Abrigo"] || data.item["Modelo"] || 'Sem modelo'}
+          </h3>
+          
+          {/* Address */}
+          {data.item["Endereço"] && (
+            <p className="popup-address">
+              {data.item["Endereço"]}
+            </p>
+          )}
+
+          {/* Quick Info Row - Shows Photo, Digital, and Static badges */}
+          <div className="popup-info-row">
+            {hasPhoto && (
+              <span className="popup-info-badge">
+                <Image className="w-3 h-3" />
+                Foto
+              </span>
+            )}
+            {hasDigital && (
+              <span className="popup-info-badge popup-info-digital">
+                <Smartphone className="w-3 h-3" />
+                Digital
+              </span>
+            )}
+            {hasStatic && (
+              <span className="popup-info-badge popup-info-static">
+                <Box className="w-3 h-3" />
+                Estático
+              </span>
+            )}
+          </div>
+
+          {/* Action Button */}
+          <button
+            onClick={handleViewDetails}
+            className="popup-button"
+          >
+            Ver Detalhes
+          </button>
+        </div>
       </Popup>
     </CircleMarker>
   );
@@ -676,7 +544,7 @@ const OptimizedMarker: React.FC<{
 OptimizedMarker.displayName = 'OptimizedMarker';
 
 // ============================================
-// MapView - Main Component with Performance Optimizations
+// MapView - Main Component (Simplified Architecture)
 // ============================================
 interface MapViewProps {
   equipment: MergedEquipment[];
@@ -713,9 +581,6 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   
   // Tile loading state
   const [isTilesLoading, setIsTilesLoading] = useState(false);
-  
-  // Viewport bounds for optimization
-  const [viewportBounds, setViewportBounds] = useState<ViewportBounds | null>(null);
   
   // Debounce filters to prevent rapid re-renders
   const debouncedFilters = useDebounce(mapFilters, 150);
@@ -766,20 +631,15 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   // Calculate container height to avoid overlapping header
   useEffect(() => {
     const calculateHeight = () => {
-      // Find the sticky header element
       const header = document.querySelector('.sticky.top-0');
       if (header) {
         const headerHeight = header.getBoundingClientRect().height;
-        // Add some padding (32px = py-8 from main container)
         setContainerHeight(`calc(100vh - ${headerHeight + 48}px)`);
       }
     };
     
-    // Calculate on mount and window resize
     calculateHeight();
     window.addEventListener('resize', calculateHeight);
-    
-    // Also recalculate after a short delay to ensure header is fully rendered
     const timer = setTimeout(calculateHeight, 100);
     
     return () => {
@@ -817,11 +677,10 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   }, [equipment]);
 
   // Pre-filter equipment to only those with valid coordinates
-  // Uses pre-loaded cache if available
+  // Uses pre-loaded cache if available for instant display
   const equipmentWithCoords = useMemo(() => {
     // Use pre-loaded cached markers if available
     if (cachedMarkersData && cachedMarkersData.length > 0) {
-      // Reconstruct MarkerData from cached data + equipment lookup
       const equipmentMap = new Map(equipment.map(e => [e["Nº Eletro"], e]));
       
       const result = cachedMarkersData
@@ -882,7 +741,6 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
         };
       });
       
-      // Save asynchronously to not block rendering
       mapDataCache.saveMarkers(cacheData, equipmentHash).catch(e => {
         console.warn('[MapView] Failed to cache markers:', e);
       });
@@ -933,7 +791,7 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
     });
   }, [equipmentWithCoords, debouncedFilters]);
 
-  // Progressive loading of markers using requestIdleCallback
+  // Progressive loading of markers - simplified without conflicting optimizations
   useEffect(() => {
     if (filteredMarkersData.length === 0) {
       setLoadedMarkers([]);
@@ -942,17 +800,30 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
       return;
     }
 
+    // If we have cached data and it matches, load immediately (skip progressive loading)
+    const isCacheValid = cachedMarkersData && cachedMarkersData.length > 0;
+    if (isCacheValid && filteredMarkersData.length === equipmentWithCoords.length) {
+      // No filters applied and cache is valid - instant load
+      console.log(`[MapView] Cache hit - instant load of ${filteredMarkersData.length} markers`);
+      setLoadedMarkers(filteredMarkersData);
+      setLoadingProgress(100);
+      setIsProcessing(false);
+      return;
+    }
+
+    // Progressive loading for non-cached or filtered data
     setIsProcessing(true);
     setLoadingProgress(0);
     setLoadedMarkers([]);
 
     let currentIndex = 0;
     const totalItems = filteredMarkersData.length;
+    let cancelled = false;
 
-    const processChunk = (deadline?: IdleDeadline) => {
-      const hasTimeRemaining = deadline ? deadline.timeRemaining() > 0 : true;
+    const processChunk = () => {
+      if (cancelled) return;
       
-      if (currentIndex < totalItems && hasTimeRemaining) {
+      if (currentIndex < totalItems) {
         const endIndex = Math.min(currentIndex + CHUNK_SIZE, totalItems);
         const chunk = filteredMarkersData.slice(currentIndex, endIndex);
         
@@ -961,89 +832,28 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
         setLoadingProgress((currentIndex / totalItems) * 100);
 
         if (currentIndex < totalItems) {
-          if ('requestIdleCallback' in window) {
-            requestIdleCallback(processChunk, { timeout: CHUNK_DELAY * 2 });
-          } else {
-            setTimeout(() => processChunk(), CHUNK_DELAY);
-          }
+          setTimeout(processChunk, CHUNK_DELAY);
         } else {
           setIsProcessing(false);
-        }
-      } else if (currentIndex < totalItems) {
-        // If no time remaining but still have items, schedule next chunk
-        if ('requestIdleCallback' in window) {
-          requestIdleCallback(processChunk, { timeout: CHUNK_DELAY * 2 });
-        } else {
-          setTimeout(() => processChunk(), CHUNK_DELAY);
         }
       } else {
         setIsProcessing(false);
       }
     };
 
-    // Start processing
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(processChunk, { timeout: 100 });
-    } else {
-      setTimeout(() => processChunk(), 10);
-    }
+    // Start processing with a small delay to allow UI to render
+    const startTimer = setTimeout(processChunk, 10);
 
     return () => {
-      // Cleanup would require a more complex cancellation mechanism
-      // For now, the state updates will be ignored if component unmounts
+      cancelled = true;
+      clearTimeout(startTimer);
     };
-  }, [filteredMarkersData]);
-
-  // Build R-tree spatial index for fast viewport queries (O(log n) vs O(n))
-  const spatialIndex = useMemo(() => {
-    // Only build index for large datasets
-    if (loadedMarkers.length < SPATIAL_INDEX_THRESHOLD) {
-      return null;
-    }
-    
-    const tree = new RBush<MarkerBBox>();
-    const bboxes: MarkerBBox[] = loadedMarkers.map(marker => ({
-      minX: marker.position[1], // longitude
-      minY: marker.position[0], // latitude
-      maxX: marker.position[1],
-      maxY: marker.position[0],
-      marker,
-    }));
-    
-    // Bulk load is much faster than individual inserts
-    tree.load(bboxes);
-    console.log(`[MapView] Built R-tree index with ${loadedMarkers.length} markers`);
-    
-    return tree;
-  }, [loadedMarkers]);
-
-  // Filter markers by viewport using R-tree for O(log n) queries
-  const visibleMarkers = useMemo(() => {
-    // If no spatial index, return all markers (small dataset or no bounds)
-    if (!spatialIndex || !viewportBounds) {
-      return loadedMarkers;
-    }
-
-    // Use R-tree for fast spatial query
-    const results = spatialIndex.search({
-      minX: viewportBounds.west,  // longitude min
-      minY: viewportBounds.south, // latitude min
-      maxX: viewportBounds.east,  // longitude max
-      maxY: viewportBounds.north, // latitude max
-    });
-    
-    return results.map(bbox => bbox.marker);
-  }, [loadedMarkers, viewportBounds, spatialIndex]);
+  }, [filteredMarkersData, cachedMarkersData, equipmentWithCoords.length]);
 
   // Handle marker click
   const handleMarkerClick = useCallback((item: MergedEquipment) => {
     onSelectEquipment(item);
   }, [onSelectEquipment]);
-
-  // Handle bounds change
-  const handleBoundsChange = useCallback((bounds: ViewportBounds | null) => {
-    setViewportBounds(bounds);
-  }, []);
 
   if (externalLoading) {
     return (
@@ -1099,8 +909,8 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
         style={{ height: '100%', width: '100%' }}
         zoomControl={true}
         scrollWheelZoom={true}
-        preferCanvas={true} // Force canvas rendering
-        attributionControl={false} // Hide attribution watermark
+        preferCanvas={true}
+        attributionControl={false}
       >
         {/* State controller - handles view persistence */}
         <MapStateController
@@ -1108,13 +918,10 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
           initialZoom={initialViewState?.zoom}
         />
         
-        {/* Viewport tracker for optimization */}
-        <ViewportTracker onBoundsChange={handleBoundsChange} />
-        
-        {/* Tile layer with dark/light mode switching and performance optimizations */}
+        {/* Tile layer with dark/light mode switching */}
         <TileLayerSwitcher isDark={isDark} onLoadingChange={setIsTilesLoading} />
 
-        {/* Marker Cluster Group with optimized settings (Phase 6 enhancements) */}
+        {/* Marker Cluster Group - let it handle its own optimizations */}
         <MarkerClusterGroup
           chunkedLoading={true}
           chunkDelay={50}
@@ -1125,17 +932,9 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
           showCoverageOnHover={false}
           disableClusteringAtZoom={17}
           removeOutsideVisibleBounds={true}
-          animate={false} // Disable animation for better performance
-          // Phase 6 additional optimizations
-          singleMarkerMode={false} // Keep false - we want full marker functionality
-          zoomToBoundsOnClick={true} // Zoom into cluster on click
-          spiderfyDistanceMultiplier={1.5} // Spread spiderfied markers more
-          polygonOptions={{ // Lighter polygon style for performance
-            stroke: false,
-            fill: false,
-          }}
+          animate={false}
         >
-          {visibleMarkers.map((data) => (
+          {loadedMarkers.map((data) => (
             <OptimizedMarker
               key={data.id}
               data={data}
