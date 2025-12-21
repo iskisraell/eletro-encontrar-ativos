@@ -33,7 +33,7 @@ interface EquipmentStore {
     searchQuery: string;
 
     // UI State
-    activeTab: 'list' | 'dashboard';
+    activeTab: 'list' | 'dashboard' | 'map';
     selectedEquipment: Equipment | null;
     isFilterOpen: boolean;
     visibleCount: number;
@@ -60,7 +60,7 @@ interface EquipmentStore {
     setSearchQuery: (query: string) => void;
 
     // UI Actions
-    setActiveTab: (tab: 'list' | 'dashboard') => void;
+    setActiveTab: (tab: 'list' | 'dashboard' | 'map') => void;
     setSelectedEquipment: (item: Equipment | null) => void;
     setFilterOpen: (open: boolean) => void;
     setVisibleCount: (count: number) => void;

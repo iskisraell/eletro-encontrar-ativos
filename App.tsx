@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchEquipment, fetchPanelsLayer, fetchMainLayer } from './services/api';
 import { layerCache } from './services/layerCache';
-import { stackLayers, createPanelsMap, batchAttachPanelData } from './services/layerStacker';
+import { stackLayers, createPanelsMap } from './services/layerStacker';
 import { Equipment, MergedEquipment, PanelLayerRecord } from './types';
 import { isAbrigo } from './schemas/equipment';
 import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
 import FilterBar from './components/FilterBar';
-import TabNavigation from './components/TabNavigation';
+import TabNavigation, { TabType } from './components/TabNavigation';
 import PanelsSyncIndicator from './components/PanelsSyncIndicator';
+import MapView from './components/MapView';
 import { Dashboard } from './components/dashboard';
-import { Skeleton } from './components/ui/Skeleton';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
 import AnimatedPlaceholder from './components/AnimatedPlaceholder';
 import { useDarkMode } from './hooks/useDarkMode';
@@ -39,14 +39,13 @@ function App() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list');
+  const [activeTab, setActiveTab] = useState<TabType>('list');
 
   // Dark Mode
   const { isDark } = useDarkMode();
 
   // Pagination State (Client-side)
   const [visibleCount, setVisibleCount] = useState(24);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Filter & Sort State
   const [filters, setFilters] = useState({
@@ -514,28 +513,20 @@ function App() {
   }, [data, filters, sort, featureFilters]);
 
   const handleLoadMore = useCallback(() => {
-    if (isLoadingMore || loading) return;
-    
-    setIsLoadingMore(true);
-    // Add a small delay to make the automatic loading feel intentional and premium
-    setTimeout(() => {
-      setVisibleCount(prev => prev + 24);
-      setIsLoadingMore(false);
-    }, 450);
-  }, [isLoadingMore, loading]);
+    setVisibleCount(prev => prev + 24);
+  }, []);
 
+  // Infinite Scroll Observer
   useEffect(() => {
-    if (loading || error || visibleCount >= filteredAndSortedData.length || isLoadingMore) return;
-
     const observer = new IntersectionObserver(
       entries => {
-        if (entries[0].isIntersecting) {
+        if (entries[0].isIntersecting && !loading && !error && visibleCount < filteredAndSortedData.length) {
           handleLoadMore();
         }
       },
       { 
-        threshold: 0.1,
-        rootMargin: '100px' // Start loading a bit before reaching the end
+        rootMargin: '800px', // Start loading even before the user reaches the end for a smoother experience
+        threshold: 0.1 
       }
     );
 
@@ -548,7 +539,7 @@ function App() {
         observer.unobserve(observerTarget.current);
       }
     };
-  }, [loading, error, visibleCount, filteredAndSortedData.length, isLoadingMore, handleLoadMore]);
+  }, [loading, error, visibleCount, filteredAndSortedData.length]);
 
   // Reset pagination when filters or sort change
   useEffect(() => {
@@ -648,6 +639,8 @@ function App() {
     });
   }, []);
 
+  // Determine if we should show Load More button:
+  const showLoadMore = !loading && !error && visibleCount < filteredAndSortedData.length;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
@@ -725,20 +718,22 @@ function App() {
         </div>
       </div>
 
-      {/* Filter Bar - Always visible for filtering both views */}
-      <FilterBar
-        isOpen={isFilterOpen}
-        onClose={() => setIsFilterOpen(false)}
-        filters={filters}
-        sort={sort}
-        options={filterOptions}
-        onFilterChange={handleFilterChange}
-        onSortChange={handleSortChange}
-        onClearFilters={clearFilters}
-        featureFilters={featureFilters}
-        onFeatureFilterChange={handleFeatureFilterChange}
-        activeTab={activeTab}
-      />
+      {/* Filter Bar - Hidden on map view since it has its own filters */}
+      {activeTab !== 'map' && (
+        <FilterBar
+          isOpen={isFilterOpen}
+          onClose={() => setIsFilterOpen(false)}
+          filters={filters}
+          sort={sort}
+          options={filterOptions}
+          onFilterChange={handleFilterChange}
+          onSortChange={handleSortChange}
+          onClearFilters={clearFilters}
+          featureFilters={featureFilters}
+          onFeatureFilterChange={handleFeatureFilterChange}
+          activeTab={activeTab}
+        />
+      )}
 
 
       {/* Main Content - Conditional rendering to avoid unnecessary re-renders */}
@@ -753,6 +748,15 @@ function App() {
             onPanelFilterChange={handlePanelFilterChange}
             featureFilters={featureFilters}
             onFeatureFilterChange={handleFeatureFilterChange}
+          />
+        )}
+
+        {/* Map View Tab Content - Only rendered when active */}
+        {activeTab === 'map' && (
+          <MapView
+            equipment={fullDataCache}
+            onSelectEquipment={handleCardClick}
+            isLoading={loading && data.length === 0}
           />
         )}
 
@@ -788,7 +792,6 @@ function App() {
                 <EquipmentCard
                   key={key}
                   item={item}
-                  index={index % 24} // Stagger only within the current batch
                   onClick={handleCardClick}
                 />
               );
@@ -811,46 +814,24 @@ function App() {
             </div>
           )}
 
-          {/* Load More Sentinel & Indicator */}
-          {filteredAndSortedData.length > visibleCount && (
-            <div className="mt-16 flex flex-col items-center justify-center py-12 border-t border-gray-100 dark:border-gray-800/50">
-              <div ref={observerTarget} className="flex flex-col items-center gap-4">
-                {isLoadingMore ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 bg-eletro-orange rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                      <div className="w-2.5 h-2.5 bg-eletro-orange rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-2.5 h-2.5 bg-eletro-orange rounded-full animate-bounce"></div>
-                    </div>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm font-medium animate-pulse">
-                      Carregando mais equipamentos...
-                    </p>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full"></div>
-                    <p className="text-gray-400 dark:text-gray-500 text-xs font-medium uppercase tracking-widest">
-                      Continue navegando para carregar mais
-                    </p>
-                  </div>
-                )}
-                
-                <div className="mt-2 px-4 py-1.5 bg-gray-100 dark:bg-gray-800/50 rounded-full">
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                    {Math.min(visibleCount, filteredAndSortedData.length)} de {filteredAndSortedData.length} exibidos
-                  </span>
-                </div>
+          {/* Sentinel for Infinite Scroll (positioned to trigger before the button) */}
+          {visibleCount < filteredAndSortedData.length && (
+            <div ref={observerTarget} className="h-1 w-full" />
+          )}
 
-                {/* Manual Fallback for accessibility or slower connections */}
-                {!isLoadingMore && (
-                  <button
-                    onClick={handleLoadMore}
-                    className="mt-4 text-xs text-eletro-orange hover:underline font-medium opacity-60 hover:opacity-100 transition-opacity"
-                  >
-                    Carregar agora
-                  </button>
-                )}
-              </div>
+          {/* Load More Button & UI Feedback */}
+          {showLoadMore && (
+            <div className="mt-12 flex flex-col items-center justify-center">
+              <button
+                onClick={handleLoadMore}
+                className="group relative flex items-center justify-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-md hover:border-eletro-orange hover:text-eletro-orange transition-all duration-300 shadow-sm hover:shadow-md mb-4"
+              >
+
+                Carregar Mais
+                <span className="ml-2 text-xs font-normal text-gray-400 group-hover:text-eletro-orange/70">
+                  ({visibleCount} de {filteredAndSortedData.length} exibidos)
+                </span>
+              </button>
             </div>
           )}
           </>

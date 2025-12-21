@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       }
     },
-    base: '/eletro-encontrar-ativos/',
+
     build: {
       target: 'es2020',
       rollupOptions: {
@@ -31,6 +31,8 @@ export default defineConfig(({ mode }) => {
             'vendor-charts': ['recharts'],
             // Animation library - large
             'vendor-motion': ['framer-motion'],
+            // Map libraries - large, rarely changes
+            'vendor-maps': ['leaflet', 'react-leaflet', 'react-leaflet-cluster'],
             // Utility libraries - small, stable
             'vendor-utils': ['zod', 'zustand', 'clsx', 'tailwind-merge', 'class-variance-authority'],
             // Icons - tree-shaken, but good to separate

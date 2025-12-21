@@ -30,7 +30,7 @@ interface FilterBarProps {
     onClearFilters: () => void;
     featureFilters?: string[];
     onFeatureFilterChange?: (featureName: string) => void;
-    activeTab?: 'list' | 'dashboard';
+    activeTab?: 'list' | 'dashboard' | 'map';
 }
 
 const sidebarVariants = {

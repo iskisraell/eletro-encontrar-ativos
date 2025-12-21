@@ -20,6 +20,7 @@ interface TabsTriggerProps {
     children: React.ReactNode;
     className?: string;
     icon?: React.ReactNode;
+    layoutId?: string; // Custom layoutId for animation isolation
 }
 
 interface TabsContentProps {
@@ -68,9 +69,12 @@ export const TabsList: React.FC<TabsListProps> = ({ children, className }) => {
 };
 
 // Individual Tab Trigger
-export const TabsTrigger: React.FC<TabsTriggerProps> = ({ value, children, className, icon }) => {
+export const TabsTrigger: React.FC<TabsTriggerProps> = ({ value, children, className, icon, layoutId }) => {
     const { value: selectedValue, onValueChange } = useTabsContext();
     const isSelected = selectedValue === value;
+    
+    // Use provided layoutId or fallback to default
+    const animationLayoutId = layoutId || 'tab-indicator';
 
     return (
         <button
@@ -88,7 +92,7 @@ export const TabsTrigger: React.FC<TabsTriggerProps> = ({ value, children, class
             {/* Animated background */}
             {isSelected && (
                 <motion.div
-                    layoutId="tab-indicator"
+                    layoutId={animationLayoutId}
                     className="absolute inset-0 bg-white dark:bg-gray-700 rounded-lg shadow-sm"
                     transition={spring.stiff}
                 />
