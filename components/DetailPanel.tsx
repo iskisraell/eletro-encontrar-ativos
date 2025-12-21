@@ -1,19 +1,24 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Equipment } from '../types';
+import { Equipment, MergedEquipment, PanelLayerRecord, DigitalPanelDetails, PanelDetails } from '../types';
 import { CloseIcon, MapPinIcon, InfoIcon, MaximizeIcon, TagIcon, WifiIcon, CameraIcon, DigitalIcon, ZapIcon, CalendarIcon, BoxIcon, CheckIcon, ExternalLinkIcon } from './Icons';
 import MapEmbed from './MapEmbed';
 import { spring } from '../lib/animations';
 import placeholderImg from '../assets/placeholder.jpg';
 
 interface DetailPanelProps {
-  item: Equipment | null;
+  item: Equipment | MergedEquipment | null;
   onClose: () => void;
 }
 
 // Helper to format values
-const formatValue = (key: string, value: any): string => {
+const formatValue = (key: string, value: any, id?: string): string => {
   if (key === "Tipo de Estabelecimento") {
+    if (id) {
+      const firstChar = String(id).charAt(0).toUpperCase();
+      if (firstChar === 'T') return "Abrigos São Paulo - Totens";
+      if (firstChar === 'A') return "Abrigos São Paulo - Abrigos";
+    }
     const valStr = String(value).toLowerCase();
     if (valStr.includes('totem')) return "Abrigos São Paulo - Totens";
     if (valStr.includes('abrigo')) return "Abrigos São Paulo - Abrigos";
@@ -67,6 +72,91 @@ const modalVariants = {
   }
 };
 
+// Helper to check if item has panel data
+const hasPanelData = (item: Equipment | MergedEquipment | null): item is MergedEquipment & { _panelData: PanelLayerRecord } => {
+  if (!item) return false;
+  return '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item && item._panelData !== undefined;
+};
+
+// Panel stat card component
+const PanelStatCard: React.FC<{ label: string; value: string | number; highlight?: boolean }> = ({ label, value, highlight }) => (
+  <div className={`rounded-xl p-4 text-center ${highlight ? 'bg-eletro-orange/10 border border-eletro-orange/30' : 'bg-gray-100 dark:bg-gray-800'}`}>
+    <div className={`text-2xl font-bold ${highlight ? 'text-eletro-orange' : 'text-gray-900 dark:text-white'}`}>
+      {value}
+    </div>
+    <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mt-1">
+      {label}
+    </div>
+  </div>
+);
+
+// Panel detail card component
+const PanelDetailCard: React.FC<{
+  type: 'Digital' | 'Estático';
+  details: DigitalPanelDetails | PanelDetails;
+}> = ({ type, details }) => {
+  const isDigital = type === 'Digital';
+  const brand = isDigital && 'brand' in details ? details.brand : null;
+  
+  return (
+    <motion.div
+      className="bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-4"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+    >
+      {/* Header */}
+      <div className={`px-4 py-3 flex items-center gap-2 ${isDigital ? 'bg-purple-500/10 border-b border-purple-500/20' : 'bg-blue-500/10 border-b border-blue-500/20'}`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDigital ? 'bg-purple-500/20' : 'bg-blue-500/20'}`}>
+          {isDigital ? (
+            <DigitalIcon className="w-4 h-4 text-purple-500" />
+          ) : (
+            <BoxIcon className="w-4 h-4 text-blue-500" />
+          )}
+        </div>
+        <div>
+          <h4 className={`font-semibold ${isDigital ? 'text-purple-600 dark:text-purple-400' : 'text-blue-600 dark:text-blue-400'}`}>
+            Painel {type}
+          </h4>
+          {brand && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Marca: <span className="font-medium text-gray-700 dark:text-gray-300">{brand}</span>
+            </span>
+          )}
+        </div>
+      </div>
+      
+      {/* Details Grid */}
+      <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {details.boxes > 0 && (
+          <div className="text-center">
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{details.boxes}</div>
+            <div className="text-xs text-gray-500 uppercase">Caixas</div>
+          </div>
+        )}
+        {details.faces > 0 && (
+          <div className="text-center">
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{details.faces}</div>
+            <div className="text-xs text-gray-500 uppercase">Faces</div>
+          </div>
+        )}
+        {details.position && details.position !== "-" && details.position !== "N/A" && (
+          <div className="text-center">
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{details.position}</div>
+            <div className="text-xs text-gray-500 uppercase">Posição</div>
+          </div>
+        )}
+        {details.type && details.type !== "-" && details.type !== "N/A" && (
+          <div className="text-center">
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{details.type}</div>
+            <div className="text-xs text-gray-500 uppercase">Tipo</div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
 const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
   const [isImageModalOpen, setIsImageModalOpen] = React.useState(false);
 
@@ -102,6 +192,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
       key !== "Status" && // Shown as badge
       key !== "Latitude" &&
       key !== "Longitude" &&
+      key !== "_hasPanelData" &&
+      key !== "_panelData" &&
       value !== null &&
       value !== undefined &&
       value !== "" &&
@@ -127,7 +219,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
 
           {/* Slide-over Panel */}
           <motion.div
-            className="relative w-full max-w-2xl bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col"
+            className="relative w-full max-w-2xl bg-white dark:bg-gray-950 h-full shadow-2xl flex flex-col"
             variants={panelVariants}
             initial="initial"
             animate="animate"
@@ -148,7 +240,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto">
               {/* Hero Image */}
-              <div className="h-72 w-full relative bg-gray-900">
+              <div className="h-72 w-full relative bg-gray-950">
                 <img
                   src={imageUrl}
                   alt={id}
@@ -211,7 +303,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
                             <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-tight">{key}</span>
                           </div>
                           <span className="text-gray-900 dark:text-gray-100 font-medium break-words leading-tight">
-                            {formatValue(key, item[key])}
+                            {formatValue(key, item[key], id)}
                           </span>
                         </motion.div>
                       ))
@@ -222,6 +314,55 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
                     )}
                   </div>
                 </section>
+
+                {/* Dados de Painéis Section - Only shown when panel data is available */}
+                {hasPanelData(item) && (
+                  <section className="mt-8">
+                    <div className="flex items-center mb-4 text-gray-900 dark:text-white">
+                      <DigitalIcon className="w-5 h-5 mr-2 text-eletro-orange" />
+                      <h3 className="font-bold text-xl">Dados de Painéis</h3>
+                    </div>
+
+                    {/* Panel Summary Stats */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                      <PanelStatCard 
+                        label="Total Painéis" 
+                        value={item._panelData.totalPanels} 
+                        highlight={true}
+                      />
+                      {item._panelData.hasDigital && (
+                        <PanelStatCard 
+                          label="Digital" 
+                          value="Sim"
+                        />
+                      )}
+                      {item._panelData.hasStatic && (
+                        <PanelStatCard 
+                          label="Estático" 
+                          value="Sim"
+                        />
+                      )}
+                    </div>
+
+                    {/* Digital Panel Details */}
+                    {item._panelData.digital && (item._panelData.digital.boxes > 0 || item._panelData.digital.faces > 0) && (
+                      <PanelDetailCard type="Digital" details={item._panelData.digital} />
+                    )}
+
+                    {/* Static Panel Details */}
+                    {item._panelData.static && (item._panelData.static.boxes > 0 || item._panelData.static.faces > 0) && (
+                      <PanelDetailCard type="Estático" details={item._panelData.static} />
+                    )}
+
+                    {/* Observation if available */}
+                    {item._panelData.observation && item._panelData.observation !== "-" && item._panelData.observation !== "N/A" && (
+                      <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">Observações do Painel</span>
+                        <p className="text-gray-900 dark:text-white mt-1">{item._panelData.observation}</p>
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {/* Map Section */}
                 {address && (
@@ -247,7 +388,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose }) => {
             </div>
 
             {/* Footer Actions */}
-            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-950">
               {item["Link Operações"] && typeof item["Link Operações"] === 'string' && (
                 <motion.a
                   href={item["Link Operações"]}

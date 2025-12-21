@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Equipment } from '../types';
+import { Equipment, MergedEquipment, PanelLayerRecord } from '../types';
 import { hasValue, isActiveValue, isAbrigo } from '../schemas/equipment';
 import { percentage, getTopN } from '../lib/utils';
 
@@ -36,6 +36,13 @@ export interface StackedChartData {
     percentage?: number;
 }
 
+export interface BrandChartData {
+    name: string;
+    value: number;
+    percentage?: number;
+    fill?: string;
+}
+
 export interface DashboardData {
     stats: DashboardStats;
     byWorkArea: ChartData[];
@@ -47,6 +54,8 @@ export interface DashboardData {
     panelDistribution: ChartData[];
     panelsByShelterModel: StackedChartData[];
     panelsByWorkArea: StackedChartData[];
+    // Brand distribution from panels layer
+    byDigitalBrand: BrandChartData[];
 }
 
 // Color palette for charts
@@ -66,13 +75,25 @@ export const DIGITAL_PANEL_COLOR = '#ff4f00'; // Eletro orange
 export const STATIC_PANEL_COLOR = '#ff74ff'; // Pink for static
 
 /**
+ * Helper to check if equipment has merged panel data
+ */
+const hasMergedPanelData = (e: Equipment | MergedEquipment): e is MergedEquipment & { _panelData: PanelLayerRecord } => {
+    return '_hasPanelData' in e && e._hasPanelData === true && '_panelData' in e && e._panelData !== undefined;
+};
+
+/**
  * Helper to check if equipment has digital panels
- * Uses new summary fields when available, falls back to legacy
+ * Uses merged panel data when available, falls back to legacy
  * Only Abrigos (shelters) can have panels - TOTEMs cannot
  */
-const hasDigitalPanel = (e: Equipment): boolean => {
+const hasDigitalPanel = (e: Equipment | MergedEquipment): boolean => {
     // Only Abrigos (shelters) can have panels
     if (!isAbrigo(e)) return false;
+    
+    // Check merged panel data first (from panels layer)
+    if (hasMergedPanelData(e)) {
+        return e._panelData.hasDigital;
+    }
     
     // New API fields (summary layer)
     if (typeof e.hasDigital === 'boolean') return e.hasDigital;
@@ -83,12 +104,17 @@ const hasDigitalPanel = (e: Equipment): boolean => {
 
 /**
  * Helper to check if equipment has static panels
- * Uses new summary fields when available, falls back to legacy
+ * Uses merged panel data when available, falls back to legacy
  * Only Abrigos (shelters) can have panels - TOTEMs cannot
  */
-const hasStaticPanel = (e: Equipment): boolean => {
+const hasStaticPanel = (e: Equipment | MergedEquipment): boolean => {
     // Only Abrigos (shelters) can have panels
     if (!isAbrigo(e)) return false;
+    
+    // Check merged panel data first (from panels layer)
+    if (hasMergedPanelData(e)) {
+        return e._panelData.hasStatic;
+    }
     
     // New API fields (summary layer)
     if (typeof e.hasStatic === 'boolean') return e.hasStatic;
@@ -99,11 +125,17 @@ const hasStaticPanel = (e: Equipment): boolean => {
 
 /**
  * Get digital panel count for equipment
+ * Uses merged panel data when available
  * Only Abrigos (shelters) can have panels - TOTEMs return 0
  */
-const getDigitalPanelCount = (e: Equipment): number => {
+const getDigitalPanelCount = (e: Equipment | MergedEquipment): number => {
     // Only Abrigos (shelters) can have panels
     if (!isAbrigo(e)) return 0;
+    
+    // Check merged panel data first (from panels layer)
+    if (hasMergedPanelData(e) && e._panelData.digital) {
+        return e._panelData.digital.boxes || 1;
+    }
     
     if (typeof e.digitalPanels === 'number') return e.digitalPanels;
     // Legacy: try to parse from string field
@@ -117,11 +149,17 @@ const getDigitalPanelCount = (e: Equipment): number => {
 
 /**
  * Get static panel count for equipment
+ * Uses merged panel data when available
  * Only Abrigos (shelters) can have panels - TOTEMs return 0
  */
-const getStaticPanelCount = (e: Equipment): number => {
+const getStaticPanelCount = (e: Equipment | MergedEquipment): number => {
     // Only Abrigos (shelters) can have panels
     if (!isAbrigo(e)) return 0;
+    
+    // Check merged panel data first (from panels layer)
+    if (hasMergedPanelData(e) && e._panelData.static) {
+        return e._panelData.static.boxes || 1;
+    }
     
     if (typeof e.staticPanels === 'number') return e.staticPanels;
     // Legacy: try to parse from string field
@@ -134,15 +172,50 @@ const getStaticPanelCount = (e: Equipment): number => {
 };
 
 /**
+ * Get total panel count for equipment
+ * Uses merged panel data when available
+ */
+const getTotalPanelCount = (e: Equipment | MergedEquipment): number => {
+    if (!isAbrigo(e)) return 0;
+    
+    // Check merged panel data first
+    if (hasMergedPanelData(e)) {
+        return e._panelData.totalPanels || 0;
+    }
+    
+    return getDigitalPanelCount(e) + getStaticPanelCount(e);
+};
+
+/**
+ * Get digital panel brand for equipment
+ * Only available from merged panel data (panels layer)
+ */
+const getDigitalPanelBrand = (e: Equipment | MergedEquipment): string | null => {
+    if (!isAbrigo(e)) return null;
+    
+    if (hasMergedPanelData(e) && e._panelData.digital?.brand) {
+        return e._panelData.digital.brand;
+    }
+    
+    return null;
+};
+
+/**
  * Get shelter model for equipment
  * Prefers main layer "Modelo de Abrigo", with panels layer "shelterModel" as complement
  */
-const getShelterModel = (e: Equipment): string | null => {
+const getShelterModel = (e: Equipment | MergedEquipment): string | null => {
     const mainModel = e["Modelo de Abrigo"];
     if (mainModel && mainModel !== '-' && mainModel.trim()) {
         return mainModel;
     }
-    // Fallback to panels layer shelterModel if main is empty
+    
+    // Try merged panel data shelter model
+    if (hasMergedPanelData(e) && e._panelData.shelterModel) {
+        return e._panelData.shelterModel;
+    }
+    
+    // Fallback to legacy shelterModel field
     if (e.shelterModel && e.shelterModel.trim()) {
         return e.shelterModel;
     }
@@ -151,8 +224,9 @@ const getShelterModel = (e: Equipment): string | null => {
 
 /**
  * Hook to calculate dashboard statistics and chart data from equipment array
+ * Supports both Equipment[] and MergedEquipment[] with panel data
  */
-export function useDashboardStats(equipment: Equipment[]): DashboardData {
+export function useDashboardStats(equipment: (Equipment | MergedEquipment)[]): DashboardData {
     return useMemo(() => {
         const total = equipment.length;
 
@@ -320,6 +394,25 @@ export function useDashboardStats(equipment: Equipment[]): DashboardData {
             }))
             .sort((a, b) => b.total - a.total);
 
+        // Brand distribution - using merged panel data
+        const brandMap = new Map<string, number>();
+        equipment.forEach(e => {
+            const brand = getDigitalPanelBrand(e);
+            if (brand) {
+                // Normalize brand names (e.g., "BOE/DD" -> "BOE")
+                const normalizedBrand = brand.split('/')[0].trim().toUpperCase();
+                brandMap.set(normalizedBrand, (brandMap.get(normalizedBrand) || 0) + 1);
+            }
+        });
+        const byDigitalBrand: BrandChartData[] = Array.from(brandMap.entries())
+            .map(([name, value], i) => ({
+                name,
+                value,
+                percentage: percentage(value, digitalPanelEquipment.length),
+                fill: CHART_COLORS[i % CHART_COLORS.length],
+            }))
+            .sort((a, b) => b.value - a.value);
+
         return {
             stats,
             byWorkArea,
@@ -330,6 +423,7 @@ export function useDashboardStats(equipment: Equipment[]): DashboardData {
             panelDistribution,
             panelsByShelterModel,
             panelsByWorkArea,
+            byDigitalBrand,
         };
     }, [equipment]);
 }

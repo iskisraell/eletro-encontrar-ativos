@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { fetchEquipment } from './services/api';
-import { db } from './services/db';
-import { Equipment } from './types';
+import { fetchEquipment, fetchPanelsLayer, fetchMainLayer } from './services/api';
+import { layerCache } from './services/layerCache';
+import { stackLayers, createPanelsMap, batchAttachPanelData } from './services/layerStacker';
+import { Equipment, MergedEquipment, PanelLayerRecord } from './types';
 import { isAbrigo } from './schemas/equipment';
 import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
 import FilterBar from './components/FilterBar';
 import TabNavigation from './components/TabNavigation';
-import DarkModeToggle from './components/DarkModeToggle';
+import PanelsSyncIndicator from './components/PanelsSyncIndicator';
 import { Dashboard } from './components/dashboard';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
 import AnimatedPlaceholder from './components/AnimatedPlaceholder';
-import { spring } from './lib/animations';
 import { useDarkMode } from './hooks/useDarkMode';
 import desktopLogo from './assets/Eletromidia Horizontal (3).png';
 import mobileLogo from './assets/LOGOELETRO.png';
@@ -22,18 +21,18 @@ import { useToast } from './contexts/ToastContext';
 function App() {
   const { showFilterToast } = useToast();
   const [query, setQuery] = useState('');
-  const [data, setData] = useState<Equipment[]>([]);
-  const [total, setTotal] = useState(0);
+  const [data, setData] = useState<MergedEquipment[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItem, setSelectedItem] = useState<Equipment | null>(null);
+  const [selectedItem, setSelectedItem] = useState<MergedEquipment | null>(null);
   const observerTarget = React.useRef<HTMLDivElement>(null);
 
-  // Search Optimization State
-  const [fullDataCache, setFullDataCache] = useState<Equipment[]>([]);
+  // Layer-based caching state
+  const [fullDataCache, setFullDataCache] = useState<MergedEquipment[]>([]);
+  const [panelsCache, setPanelsCache] = useState<Map<string, PanelLayerRecord>>(new Map());
   const [isCacheReady, setIsCacheReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPanelsSyncing, setIsPanelsSyncing] = useState(false);
 
   // Filter Visibility State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -42,7 +41,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list');
 
   // Dark Mode
-  const { isDark, toggle: toggleDarkMode } = useDarkMode();
+  const { isDark } = useDarkMode();
 
   // Pagination State (Client-side)
   const [visibleCount, setVisibleCount] = useState(24);
@@ -66,97 +65,174 @@ function App() {
   // Maps feature display names to their selected state
   const [featureFilters, setFeatureFilters] = useState<string[]>([]);
 
-  // Initial load logic (IndexedDB + Background Sync)
+  /**
+   * Sync main layer data from API to IndexedDB cache.
+   * Fetches in chunks and updates UI progressively.
+   */
+  const syncMainLayer = async (currentCount: number, totalItems: number): Promise<Equipment[]> => {
+    let currentOffset = currentCount;
+    const chunkSize = 5000;
+    let allData: Equipment[] = [];
+
+    try {
+      // Get existing cached data
+      const existingData = await layerCache.getAllMain();
+      const dataMap = new Map<string, Equipment>();
+      existingData.forEach(item => {
+        if (item["Nº Eletro"]) dataMap.set(item["Nº Eletro"], item);
+      });
+
+      while (currentOffset < totalItems) {
+        const { data: chunk } = await fetchMainLayer({ start: currentOffset, limit: chunkSize });
+        if (chunk.length === 0) break;
+
+        // Save to cache
+        await layerCache.saveMainChunk(chunk);
+
+        // Update map
+        chunk.forEach(item => {
+          if (item["Nº Eletro"]) dataMap.set(item["Nº Eletro"], item);
+        });
+
+        currentOffset += chunkSize;
+      }
+
+      allData = Array.from(dataMap.values());
+
+      // Update timestamp
+      await layerCache.setLayerTimestamp('main', Date.now());
+
+      return allData;
+    } catch (e) {
+      console.error("Main layer sync failed", e);
+      throw e;
+    }
+  };
+
+  /**
+   * Sync panels layer data from API to IndexedDB cache.
+   * Fetches panel-specific data including brand information.
+   */
+  const syncPanelsLayer = async (): Promise<PanelLayerRecord[]> => {
+    setIsPanelsSyncing(true);
+    let currentOffset = 0;
+    const chunkSize = 5000;
+    const panelsMap = new Map<string, PanelLayerRecord>();
+
+    try {
+      // First, get total count
+      const { total: totalPanels } = await fetchPanelsLayer({ start: 0, limit: 1 });
+
+      while (currentOffset < totalPanels) {
+        const { data: chunk } = await fetchPanelsLayer({ start: currentOffset, limit: chunkSize });
+        if (chunk.length === 0) break;
+
+        // Save to cache
+        await layerCache.savePanelsChunk(chunk);
+
+        // Update map
+        chunk.forEach(panel => {
+          if (panel["Nº Eletro"]) panelsMap.set(panel["Nº Eletro"], panel);
+        });
+
+        currentOffset += chunkSize;
+      }
+
+      // Update timestamp
+      await layerCache.setLayerTimestamp('panels', Date.now());
+
+      setIsPanelsSyncing(false);
+      return Array.from(panelsMap.values());
+    } catch (e) {
+      console.error("Panels layer sync failed", e);
+      setIsPanelsSyncing(false);
+      throw e;
+    }
+  };
+
+  /**
+   * Merge main data with panels data and update state.
+   */
+  const mergeAndUpdateData = (mainData: Equipment[], panelsData: PanelLayerRecord[]) => {
+    const merged = stackLayers(mainData, panelsData);
+    const newPanelsMap = createPanelsMap(panelsData);
+    
+    setData(merged);
+    setFullDataCache(merged);
+    setPanelsCache(newPanelsMap);
+  };
+
+  // Initial load logic (Layer-based IndexedDB + Background Sync)
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
       try {
-        await db.init();
-        const cachedData = await db.getAll();
+        // Initialize layer cache
+        await layerCache.init();
 
-        if (cachedData.length > 0) {
-          setData(cachedData);
-          setFullDataCache(cachedData);
-          setTotal(cachedData.length);
+        // Load cached data from both layers
+        const [cachedMain, cachedPanels] = await Promise.all([
+          layerCache.getAllMain(),
+          layerCache.getAllPanels()
+        ]);
+
+        // If we have cached main data, show it immediately
+        if (cachedMain.length > 0) {
+          mergeAndUpdateData(cachedMain, cachedPanels);
           setLoading(false);
         }
 
-        // Start Background Sync if needed
+        // Check if layers need syncing
+        const [mainStale, panelsStale] = await Promise.all([
+          layerCache.isLayerStale('main'),
+          layerCache.isLayerStale('panels')
+        ]);
+
+        // Get API total for comparison
         const { total: apiTotal } = await fetchEquipment({ start: 0, limit: 1 });
 
-        if (cachedData.length < apiTotal) {
+        // Determine if we need to sync
+        const needsMainSync = mainStale || cachedMain.length < apiTotal;
+        const needsPanelsSync = panelsStale || cachedPanels.length === 0;
+
+        if (needsMainSync || needsPanelsSync) {
           setIsSyncing(true);
-          syncData(cachedData.length, apiTotal);
-        } else {
-          setIsCacheReady(true);
+
+          // Sync layers in parallel
+          const syncPromises: Promise<any>[] = [];
+
+          if (needsMainSync) {
+            syncPromises.push(syncMainLayer(cachedMain.length, apiTotal));
+          }
+
+          if (needsPanelsSync) {
+            syncPromises.push(syncPanelsLayer());
+          }
+
+          const results = await Promise.all(syncPromises);
+
+          // Get final data
+          const finalMain = needsMainSync ? results[0] : cachedMain;
+          const finalPanels = needsPanelsSync 
+            ? (needsMainSync ? results[1] : results[0]) 
+            : cachedPanels;
+
+          mergeAndUpdateData(finalMain, finalPanels);
+          setIsSyncing(false);
         }
+
+        setIsCacheReady(true);
 
       } catch (err) {
         console.error(err);
         setError('Não foi possível carregar os dados iniciais. Tente buscar algo.');
       } finally {
         setLoading(false);
+        setIsSyncing(false);
       }
     };
     loadInitialData();
   }, []);
-
-  const syncData = async (startOffset: number, totalItems: number) => {
-    let currentOffset = startOffset;
-    const chunkSize = 5000; // API v4.0 supports up to 5000 per request
-
-    try {
-      while (currentOffset < totalItems) {
-        const { data: chunk } = await fetchEquipment({ start: currentOffset, limit: chunkSize });
-        if (chunk.length === 0) break;
-
-        await db.saveChunk(chunk);
-
-        setFullDataCache(prev => {
-          // Deduplicate using a Map based on "Nº Eletro"
-          const uniqueMap = new Map();
-
-          // Add existing items
-          prev.forEach(item => {
-            if (item["Nº Eletro"]) uniqueMap.set(item["Nº Eletro"], item);
-          });
-
-          // Add/Update with new items
-          chunk.forEach(item => {
-            if (item["Nº Eletro"]) uniqueMap.set(item["Nº Eletro"], item);
-          });
-
-          const newData = Array.from(uniqueMap.values());
-
-          // Update main display data if it was empty
-          if (prev.length === 0) {
-            setData(newData);
-            setTotal(newData.length);
-          }
-
-          return newData;
-        });
-
-        currentOffset += chunkSize;
-      }
-
-      // Final Validation
-      const finalCount = await db.count();
-      if (finalCount !== totalItems) {
-        console.warn(`Mismatch detected: DB has ${finalCount}, API expects ${totalItems}. Triggering full reload...`);
-        // Optional: Force a re-sync or just update the total visual
-        setTotal(finalCount);
-      } else {
-        setTotal(finalCount);
-      }
-
-      setIsCacheReady(true);
-      setIsSyncing(false);
-    } catch (e) {
-      console.error("Background sync failed", e);
-      setIsSyncing(false);
-    }
-  };
 
   // Debounced search logic
   useEffect(() => {
@@ -178,18 +254,19 @@ function App() {
             (item["Bairro"] && String(item["Bairro"]).toLowerCase().includes(lowerQuery))
           );
           setData(results);
-          setTotal(results.length);
           setLoading(false);
           if (results.length === 0) {
             setError(`Nenhum resultado encontrado para "${query}"`);
           }
         } else {
-          // API Fallback
+          // API Fallback - fetch and merge with panels
           try {
-            const { data: results, total: totalCount } = await fetchEquipment({ q: query });
-            setData(results);
-            setTotal(totalCount);
-            if (results.length === 0) {
+            const { data: mainResults } = await fetchEquipment({ q: query });
+            // Try to get panels for these results from cache
+            const panelsData = await layerCache.getAllPanels();
+            const merged = stackLayers(mainResults, panelsData);
+            setData(merged);
+            if (merged.length === 0) {
               setError(`Nenhum resultado encontrado para "${query}"`);
             }
           } catch (err) {
@@ -200,15 +277,7 @@ function App() {
         }
       } else if (query.trim() === '') {
         // Reset to full view
-        if (isCacheReady) {
-          setData(fullDataCache);
-          setTotal(fullDataCache.length);
-        } else {
-          // If not ready, maybe we have partial data in fullDataCache?
-          // Or we just show what we have.
-          setData(fullDataCache);
-          setTotal(fullDataCache.length);
-        }
+        setData(fullDataCache);
         setLoading(false);
       }
     }, 600);
@@ -228,8 +297,8 @@ function App() {
     }
   };
 
-  const handleCardClick = (item: Equipment) => {
-    setSelectedItem(item);
+  const handleCardClick = (item: Equipment | MergedEquipment) => {
+    setSelectedItem(item as MergedEquipment);
   };
 
   const closeDetail = () => {
@@ -346,21 +415,34 @@ function App() {
     // Panel Type Filter
     // Only applies to Abrigos (shelters) - TOTEMs cannot have panels
     // Uses OR logic: equipment matches if it has ANY of the selected panel types
+    // Prefers _panelData from merged layers, falls back to legacy fields
     if (filters.panelType.length > 0) {
       result = result.filter(item => {
         // Only Abrigos can have panels - exclude TOTEMs from panel filters
         if (!isAbrigo(item)) return false;
         
+        // Check for merged panel data first
+        const hasMergedData = '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item;
+        
         return filters.panelType.some(type => {
           switch (type) {
             case 'digital':
-              // Has digital panel
+              // Check merged data first, then legacy
+              if (hasMergedData && item._panelData) {
+                return item._panelData.hasDigital;
+              }
               return item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
             case 'static':
-              // Has static panel
+              // Check merged data first, then legacy
+              if (hasMergedData && item._panelData) {
+                return item._panelData.hasStatic;
+              }
               return item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
             case 'none':
               // Abrigos without panels
+              if (hasMergedData && item._panelData) {
+                return !item._panelData.hasDigital && !item._panelData.hasStatic;
+              }
               const hasDigital = item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
               const hasStatic = item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
               return !hasDigital && !hasStatic;
@@ -373,8 +455,12 @@ function App() {
 
     // Apply hidden feature filters (from FeaturesChart only)
     // Uses OR logic: equipment matches if it has ANY of the selected features
+    // Prefers _panelData for panel checks
     if (featureFilters.length > 0) {
       result = result.filter(item => {
+        // Check for merged panel data
+        const hasMergedData = '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item;
+        
         return featureFilters.some(feature => {
           switch (feature) {
             case 'Wi-Fi':
@@ -382,11 +468,17 @@ function App() {
             case 'Câmera':
               return item['Câmera'] === 'Sim';
             case 'Painel Digital':
-              // Only Abrigos can have panels - check for any non-empty, non-dash value
-              return isAbrigo(item) && item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
+              if (!isAbrigo(item)) return false;
+              if (hasMergedData && item._panelData) {
+                return item._panelData.hasDigital;
+              }
+              return item['Painel Digital'] !== undefined && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
             case 'Painel Estático':
-              // Only Abrigos can have panels - check "Painel Estático - Tipo" field per API structure
-              return isAbrigo(item) && item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
+              if (!isAbrigo(item)) return false;
+              if (hasMergedData && item._panelData) {
+                return item._panelData.hasStatic;
+              }
+              return item['Painel Estático - Tipo'] !== undefined && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
             case 'Luminária':
               return item['Luminária'] === 'Sim';
             case 'Energizado':
@@ -532,6 +624,7 @@ function App() {
     });
   };
 
+
   /**
    * Handle feature chart clicks - toggle feature filters
    * These filters are hidden (not in FilterBar) and only accessible via FeaturesChart
@@ -549,10 +642,10 @@ function App() {
   const showLoadMore = !loading && !error && visibleCount < filteredAndSortedData.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
 
       {/* Sticky Header & Search */}
-      <div className="sticky top-0 z-30 bg-white/90 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="sticky top-0 z-30 bg-white/90 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-row items-center justify-between py-4 gap-4">
 
@@ -611,9 +704,6 @@ function App() {
                 </div>
                 <span className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Equipamentos</span>
               </div>
-
-              {/* Dark Mode Toggle */}
-              <DarkModeToggle isDark={isDark} onToggle={toggleDarkMode} />
             </div>
 
           </div>
@@ -639,6 +729,7 @@ function App() {
         onClearFilters={clearFilters}
         featureFilters={featureFilters}
         onFeatureFilterChange={handleFeatureFilterChange}
+        activeTab={activeTab}
       />
 
 
@@ -735,6 +826,9 @@ function App() {
         item={selectedItem}
         onClose={closeDetail}
       />
+
+      {/* Panels Sync Indicator - Creative loading animation */}
+      <PanelsSyncIndicator isVisible={isPanelsSyncing} />
 
     </div>
   );

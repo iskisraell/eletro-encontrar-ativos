@@ -9,7 +9,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class',
+      darkMode: 'media',
       theme: {
         extend: {
           fontFamily: {
@@ -25,7 +25,20 @@
               error: '#dc3545',         // Error states
               'off-white': '#f4f5f0',   // Complementary light bg
               black: '#1A1A1A',         // Dark backgrounds
-              gray: '#F3F4F6',
+            },
+            // Redefine gray to use neutral/zinc values for a "Noir" dark mode
+            gray: {
+              50: '#fafafa',
+              100: '#f4f4f5',
+              200: '#e4e4e7',
+              300: '#d4d4d8',
+              400: '#a1a1aa',
+              500: '#71717a',
+              600: '#52525b',
+              700: '#3f3f46',
+              800: '#27272a',
+              900: '#18181b',
+              950: '#09090b',
             }
           },
           keyframes: {
@@ -47,46 +60,59 @@
     }
   </script>
   <style>
-    /* Light mode defaults */
-    body {
-      background-color: #F3F4F6;
-      color: #1A1A1A;
-      transition: background-color 0.3s ease, color 0.3s ease;
+    :root {
+      --scrollbar-thumb: #ff4f00;
+      --scrollbar-track: #f4f4f5;
     }
 
-    /* Dark mode styles */
-    .dark body,
-    html.dark body {
-      background-color: #111827;
-      color: #F9FAFB;
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --scrollbar-track: #09090b;
+      }
     }
 
-    /* Custom scrollbar for webkit - Light mode */
+    /* Global scrollbar styling */
     ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
+      width: 12px;
+      height: 12px;
     }
 
     ::-webkit-scrollbar-track {
-      background: transparent;
+      background: var(--scrollbar-track);
     }
 
     ::-webkit-scrollbar-thumb {
-      background: #D1D5DB;
-      border-radius: 4px;
+      background: var(--scrollbar-thumb);
+      border-radius: 12px;
+      border: 4px solid var(--scrollbar-track);
+      background-clip: content-box;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: #9CA3AF;
+      background: #e64600;
     }
 
-    /* Dark mode scrollbar */
-    .dark ::-webkit-scrollbar-thumb {
-      background: #4B5563;
+    /* Support for Firefox */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
     }
 
-    .dark ::-webkit-scrollbar-thumb:hover {
-      background: #6B7280;
+    /* Global Body Styles */
+    body {
+      background-color: #f4f4f5; /* gray-100 */
+      color: #09090b; /* gray-950 */
+      transition: background-color 0.3s ease, color 0.3s ease;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Dark mode adjustments */
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #09090b; /* gray-950 */
+        color: #fafafa; /* gray-50 */
+      }
     }
   </style>
   <script type="importmap">

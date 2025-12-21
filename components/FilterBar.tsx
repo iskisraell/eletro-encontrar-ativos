@@ -30,6 +30,7 @@ interface FilterBarProps {
     onClearFilters: () => void;
     featureFilters?: string[];
     onFeatureFilterChange?: (featureName: string) => void;
+    activeTab?: 'list' | 'dashboard';
 }
 
 const sidebarVariants = {
@@ -55,6 +56,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     onClearFilters,
     featureFilters = [],
     onFeatureFilterChange,
+    activeTab = 'list',
 }) => {
     const [isMobile, setIsMobile] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -167,9 +169,13 @@ const FilterBar: React.FC<FilterBarProps> = ({
 
     const renderMainContent = (mobileView: boolean) => (
         <div className="flex flex-col w-full">
-            <div className={`flex items-center justify-between ${!mobileView && isCollapsed ? 'mb-0' : 'mb-4'}`}>
-                <div className="flex items-center flex-1 min-w-0">
-                    <div 
+            <motion.div 
+                layout
+                className={`flex items-center justify-between ${!mobileView && isCollapsed ? 'mb-0' : 'mb-4'}`}
+            >
+                <motion.div layout className="flex flex-1 min-w-0">
+                    <motion.div 
+                        layout
                         className="flex items-center text-gray-700 dark:text-gray-200 font-semibold mr-4 whitespace-nowrap cursor-pointer hover:text-eletro-orange transition-colors group"
                         onClick={handleToggleCollapse}
                     >
@@ -188,7 +194,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                         animate={{ scale: 1, opacity: 1 }}
                                         exit={{ scale: 0, opacity: 0 }}
                                         transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-                                        className="absolute -top-2 -right-2 bg-eletro-orange text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-sm"
+                                        className="absolute -top-2 -right-2 bg-eletro-orange text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-950 shadow-sm"
                                     >
                                         {activeCount}
                                     </motion.span>
@@ -196,14 +202,21 @@ const FilterBar: React.FC<FilterBarProps> = ({
                             </AnimatePresence>
                         </motion.div>
                         <span className="hidden sm:inline">Filtros</span>
-                    </div>
+                    </motion.div>
 
                     {!mobileView && isCollapsed && activeCount > 0 && (
-                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pr-4 flex-1">
+                        <motion.div 
+                            layout
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex items-center gap-2 overflow-x-auto no-scrollbar pr-4 flex-1"
+                        >
                             <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-2 flex-shrink-0" />
                             <div className="flex items-center gap-1.5">
                                 {activePills.slice(0, 5).map((pill, i) => (
-                                    <span
+                                    <motion.span
+                                        layout
                                         key={`${pill.key}-${pill.label}-${i}`}
                                         className="px-2 py-0.5 bg-orange-50 dark:bg-orange-900/10 text-eletro-orange text-[10px] font-bold rounded-full whitespace-nowrap border border-orange-100/50 dark:border-orange-800/20 flex items-center gap-1"
                                     >
@@ -214,35 +227,41 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                         >
                                             <X className="w-2.5 h-2.5" />
                                         </button>
-                                    </span>
+                                    </motion.span>
                                 ))}
                                 {activeCount > 5 && (
-                                    <span className="text-[10px] text-gray-400 font-bold bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">
+                                    <motion.span layout className="text-[10px] text-gray-400 font-bold bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">
                                         +{activeCount - 5}
-                                    </span>
+                                    </motion.span>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
                     )}
 
                     {hasActiveFilters && (!isCollapsed || mobileView) && (
-                        <button
+                        <motion.button
+                            layout
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
                             onClick={onClearFilters}
                             className="text-[10px] uppercase tracking-wider font-bold text-red-500 hover:text-white hover:bg-red-500 flex items-center bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-md transition-all whitespace-nowrap ml-4"
                         >
                             <X className="w-3 h-3 mr-1" />
                             Limpar
-                        </button>
+                        </motion.button>
                     )}
 
                     {!mobileView && (
                         <motion.button
+                            layout
                             onClick={handleToggleCollapse}
                             className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 ml-auto flex-shrink-0"
                             whileHover={{ scale: 1.1, backgroundColor: 'rgba(255, 79, 0, 0.1)' }}
                             whileTap={{ scale: 0.9 }}
                         >
                             <motion.div
+                                layout
                                 animate={{ rotate: isCollapsed ? 0 : 180 }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                             >
@@ -250,44 +269,53 @@ const FilterBar: React.FC<FilterBarProps> = ({
                             </motion.div>
                         </motion.button>
                     )}
-                </div>
+                </motion.div>
 
-                {!mobileView && (
-                    <div className="flex items-center space-x-2 ml-4">
-                        <div className="w-40">
-                            <MultiSelectDropdown
-                                label="Ordenar"
-                                icon={<SortAsc className="h-4 w-4" />}
-                                options={["Padrão", "ID", "Bairro", "Modelo"]}
-                                selected={
-                                    sort.field === "Nº Eletro" ? ["ID"] :
-                                        sort.field === "Bairro" ? ["Bairro"] :
-                                            sort.field === "Modelo de Abrigo" ? ["Modelo"] :
-                                                ["Padrão"]
-                                }
-                                onChange={(val) => {
-                                    const selectedLabel = val[0];
-                                    let field = "";
-                                    if (selectedLabel === "ID") field = "Nº Eletro";
-                                    else if (selectedLabel === "Bairro") field = "Bairro";
-                                    else if (selectedLabel === "Modelo") field = "Modelo de Abrigo";
-                                    onSortChange(field);
-                                }}
-                                singleSelect={true}
-                            />
-                        </div>
-                        <button
-                            onClick={() => onSortChange(sort.field)}
-                            disabled={!sort.field}
-                            className={`p-2 rounded-md border transition-colors ${!sort.field
-                                ? 'text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
-                                : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 bg-white dark:bg-gray-800'}`}
+                <AnimatePresence>
+                    {!mobileView && activeTab === 'list' && (
+                        <motion.div 
+                            layout
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.2, ease: "easeInOut" }}
+                            className="flex items-center space-x-2 ml-4 flex-shrink-0"
                         >
-                            {sort.direction === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
-                        </button>
-                    </div>
-                )}
-            </div>
+                            <div className="w-40">
+                                <MultiSelectDropdown
+                                    label="Ordenar"
+                                    icon={<SortAsc className="h-4 w-4" />}
+                                    options={["Padrão", "ID", "Bairro", "Modelo"]}
+                                    selected={
+                                        sort.field === "Nº Eletro" ? ["ID"] :
+                                            sort.field === "Bairro" ? ["Bairro"] :
+                                                sort.field === "Modelo de Abrigo" ? ["Modelo"] :
+                                                    ["Padrão"]
+                                    }
+                                    onChange={(val) => {
+                                        const selectedLabel = val[0];
+                                        let field = "";
+                                        if (selectedLabel === "ID") field = "Nº Eletro";
+                                        else if (selectedLabel === "Bairro") field = "Bairro";
+                                        else if (selectedLabel === "Modelo") field = "Modelo de Abrigo";
+                                        onSortChange(field);
+                                    }}
+                                    singleSelect={true}
+                                />
+                            </div>
+                            <button
+                                onClick={() => onSortChange(sort.field)}
+                                disabled={!sort.field}
+                                className={`p-2 rounded-md border transition-colors ${!sort.field
+                                    ? 'text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                                    : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 bg-white dark:bg-gray-800'}`}
+                            >
+                                {sort.direction === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </motion.div>
 
             <AnimatePresence initial={false}>
                 {(mobileView || !isCollapsed) && (
@@ -370,7 +398,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                             onClick={onClose}
                         />
                         <motion.div
-                            className="fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl border-r border-gray-200 dark:border-gray-700"
+                            className="fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] bg-white dark:bg-gray-950 shadow-2xl border-r border-gray-200 dark:border-gray-700"
                             variants={sidebarVariants}
                             initial="initial"
                             animate="animate"
@@ -406,7 +434,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 stiffness: 400, 
                 damping: 30,
             }}
-            className="bg-white/90 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 mb-6 sticky top-[152px] z-20 shadow-sm"
+            className="bg-white/90 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 mb-6 sticky top-[152px] z-20 shadow-sm"
         >
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 {renderMainContent(false)}

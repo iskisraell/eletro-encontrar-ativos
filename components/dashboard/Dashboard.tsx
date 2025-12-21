@@ -12,7 +12,7 @@ import {
     Image,
     PanelTop
 } from 'lucide-react';
-import { Equipment } from '../../types';
+import { Equipment, MergedEquipment } from '../../types';
 import { useDashboardStats, DIGITAL_PANEL_COLOR, STATIC_PANEL_COLOR } from '../../hooks/useDashboardStats';
 import { staggerContainer, fadeInUp } from '../../lib/animations';
 import { StatsCard } from './StatsCard';
@@ -27,7 +27,7 @@ import { PanelsByAreaChart } from './PanelsByAreaChart';
 import { SkeletonStatsCard, SkeletonChart } from '../ui/Skeleton';
 
 interface DashboardProps {
-    equipment: Equipment[];
+    equipment: (Equipment | MergedEquipment)[];
     isLoading?: boolean;
     // Filter state from parent
     filters?: {

@@ -1,15 +1,20 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Equipment } from '../types';
-import { MapPinIcon } from './Icons';
-import { cardHover, spring } from '../lib/animations';
+import { Equipment, MergedEquipment, PanelLayerRecord } from '../types';
+import { MapPinIcon, DigitalIcon } from './Icons';
+import { spring } from '../lib/animations';
 import placeholderImg from '../assets/placeholder.jpg';
 
 interface EquipmentCardProps {
-  item: Equipment;
-  onClick: (item: Equipment) => void;
+  item: Equipment | MergedEquipment;
+  onClick: (item: Equipment | MergedEquipment) => void;
   index?: number;
 }
+
+// Helper to check if item has panel data
+const hasPanelData = (item: Equipment | MergedEquipment): item is MergedEquipment & { _panelData: PanelLayerRecord } => {
+  return '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item && item._panelData !== undefined;
+};
 
 const EquipmentCard: React.FC<EquipmentCardProps> = ({ item, onClick, index = 0 }) => {
   // Fallback image if "Foto Referência" is missing or broken
@@ -49,6 +54,19 @@ const EquipmentCard: React.FC<EquipmentCardProps> = ({ item, onClick, index = 0 
         <div className="absolute top-3 left-3 bg-eletro-orange text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">
           {id}
         </div>
+        
+        {/* Panel Badge - Shows when equipment has panel data */}
+        {hasPanelData(item) && item._panelData.totalPanels > 0 && (
+          <div className="absolute top-3 right-3 flex items-center gap-1 bg-purple-600/90 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md">
+            <DigitalIcon className="w-3 h-3" />
+            <span>{item._panelData.totalPanels}</span>
+            {item._panelData.digital?.brand && (
+              <span className="text-purple-200 ml-1 border-l border-purple-400/50 pl-1.5">
+                {item._panelData.digital.brand.split('/')[0]}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="p-5 flex flex-col flex-grow">

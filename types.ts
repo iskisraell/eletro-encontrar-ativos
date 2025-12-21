@@ -6,9 +6,26 @@ export interface PanelDetails {
   type: string;
 }
 
+// Digital panel details with brand (from panels layer)
+export interface DigitalPanelDetails extends PanelDetails {
+  brand: string; // BOE, CHINA, LG, BOE/DD, etc.
+}
+
 // Panel data object (from panels/full layer)
 export interface PanelData {
   digital?: PanelDetails;
+  static?: PanelDetails;
+  shelterModel: string | null;
+  observation: string | null;
+  hasDigital: boolean;
+  hasStatic: boolean;
+  totalPanels: number;
+}
+
+// Panel layer record (from layer=panels API response)
+export interface PanelLayerRecord {
+  "Nº Eletro": string;
+  digital?: DigitalPanelDetails;
   static?: PanelDetails;
   shelterModel: string | null;
   observation: string | null;
@@ -57,7 +74,13 @@ export interface Equipment {
   shelterModel?: string | null;
   // Full layer panel object (when using layer=full)
   panels?: PanelData | null;
-  [key: string]: string | number | boolean | PanelData | null | undefined; // Allow for other dynamic columns
+  [key: string]: string | number | boolean | PanelData | PanelLayerRecord | null | undefined; // Allow for other dynamic columns
+}
+
+// Extended Equipment with merged panel layer data
+export interface MergedEquipment extends Equipment {
+  _panelData?: PanelLayerRecord;  // Attached panel layer data
+  _hasPanelData?: boolean;        // Flag indicating if panels were merged
 }
 
 export interface ApiResponse {

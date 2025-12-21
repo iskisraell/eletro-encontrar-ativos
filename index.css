@@ -57,6 +57,12 @@ textarea:focus,
     }
 }
 
+/* Firefox scrollbar support */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #ff4f00 transparent;
+}
+
 @keyframes shimmer {
     0% {
         background-position: 200% 0;

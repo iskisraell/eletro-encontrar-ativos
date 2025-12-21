@@ -1,4 +1,4 @@
-import { ApiResponse, Equipment, SearchParams, RateLimitError, ApiLayer } from '../types';
+import { ApiResponse, Equipment, SearchParams, RateLimitError, ApiLayer, PanelLayerRecord } from '../types';
 
 const API_BASE = "https://script.google.com/macros/s/AKfycbzXpzgaA64P147rIqeaLEkCZ4YQcz5rJOn89Ag8Pf3p8EIg0Beisa9dS0OL-UEOsIWL/exec";
 
@@ -139,4 +139,97 @@ export const fetchWithRetry = async (
   }
 
   throw lastError || new Error('Max retries exceeded');
+};
+
+/**
+ * Fetches panels layer data from the API.
+ * Returns panel-specific information indexed by Nº Eletro.
+ * 
+ * Panel data includes:
+ * - digital/static panel details (boxes, faces, position, type)
+ * - Digital panel brand (BOE, CHINA, LG, etc.)
+ * - Total panel counts
+ * - Shelter model
+ */
+export const fetchPanelsLayer = async (params: {
+  start?: number;
+  limit?: number;
+  q?: string;
+}): Promise<{
+  data: PanelLayerRecord[];
+  total: number;
+  cached?: boolean;
+}> => {
+  const url = new URL(API_BASE);
+  
+  // Required: docs=false to get JSON data
+  url.searchParams.append('docs', 'false');
+  
+  // Set layer to panels
+  url.searchParams.append('layer', 'panels');
+  
+  // Pagination
+  if (params.start !== undefined) {
+    url.searchParams.append('start', params.start.toString());
+  }
+  if (params.limit !== undefined) {
+    url.searchParams.append('limit', params.limit.toString());
+  }
+  
+  // Search query
+  if (params.q) {
+    url.searchParams.append('q', params.q);
+  }
+
+  try {
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    // Handle error responses
+    if (result.status === 'error') {
+      if (result.code === 429) {
+        throw new RateLimitError(result.meta?.retryAfter || 60);
+      }
+      throw new Error(result.message || 'Erro desconhecido na API');
+    }
+
+    const total = result.meta?.total ?? result.total ?? 0;
+    const cached = result.meta?.cached;
+
+    return {
+      data: result.data || [],
+      total,
+      cached
+    };
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      throw error;
+    }
+    console.error("Failed to fetch panels layer:", error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches main layer data from the API.
+ * Convenience wrapper for fetchEquipment with layer=main.
+ */
+export const fetchMainLayer = async (params: {
+  start?: number;
+  limit?: number;
+  q?: string;
+}): Promise<{
+  data: Equipment[];
+  total: number;
+  cached?: boolean;
+}> => {
+  return fetchEquipment({
+    ...params,
+    layer: 'main' as ApiLayer
+  });
 };
