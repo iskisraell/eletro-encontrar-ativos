@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
+import RBush from 'rbush';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MergedEquipment } from '../types';
 import { useIsDark } from '../hooks/useDarkMode';
@@ -9,9 +10,10 @@ import { isAbrigo } from '../schemas/equipment';
 import { MapPin, Box, Image, Smartphone, Filter, X, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { 
-  mapStateCache, 
-  MarkerData as CacheMarkerData 
-} from '../services/mapStateCache';
+  mapDataCache,
+  MapMarkerData as CacheMarkerData,
+  MapFiltersState as ImportedMapFiltersState,
+} from '../services/mapDataCache';
 
 // Import Leaflet CSS directly in JS for reliable loading
 import 'leaflet/dist/leaflet.css';
@@ -29,8 +31,12 @@ const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyrigh
 const CHUNK_SIZE = 500; // Process 500 markers per chunk
 const CHUNK_DELAY = 16; // ~60fps delay between chunks
 const VIEWPORT_PADDING = 0.1; // 10% padding outside viewport
+const SPATIAL_INDEX_THRESHOLD = 3000; // Use R-tree when markers exceed this count
 
-// Custom cluster icon creator - optimized
+// Cluster icon cache for Phase 6 optimization
+const clusterIconCache = new Map<string, L.DivIcon>();
+
+// Custom cluster icon creator - optimized with caching
 const createClusterCustomIcon = (cluster: any) => {
   const count = cluster.getChildCount();
   let size = 'small';
@@ -44,11 +50,28 @@ const createClusterCustomIcon = (cluster: any) => {
     dimensions = 44;
   }
 
-  return L.divIcon({
+  // Create cache key based on count ranges for better cache hits
+  const cacheKey = count >= 1000 
+    ? `${size}-${Math.floor(count / 100) * 100}` // Round to nearest 100 for large counts
+    : count >= 100 
+      ? `${size}-${Math.floor(count / 10) * 10}` // Round to nearest 10 for medium counts
+      : `${size}-${count}`; // Exact count for small
+
+  // Return cached icon if available
+  if (clusterIconCache.has(cacheKey)) {
+    return clusterIconCache.get(cacheKey)!;
+  }
+
+  const icon = L.divIcon({
     html: `<div>${count.toLocaleString()}</div>`,
     className: `marker-cluster marker-cluster-${size}`,
     iconSize: L.point(dimensions, dimensions, true),
   });
+
+  // Cache the icon
+  clusterIconCache.set(cacheKey, icon);
+  
+  return icon;
 };
 
 // ============================================
@@ -100,13 +123,13 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
     moveend: () => {
       const center = map.getCenter();
       const zoom = map.getZoom();
-      mapStateCache.saveViewState([center.lat, center.lng], zoom);
+      mapDataCache.saveViewState([center.lat, center.lng], zoom);
       onViewChange?.([center.lat, center.lng], zoom);
     },
     zoomend: () => {
       const center = map.getCenter();
       const zoom = map.getZoom();
-      mapStateCache.saveViewState([center.lat, center.lng], zoom);
+      mapDataCache.saveViewState([center.lat, center.lng], zoom);
       onViewChange?.([center.lat, center.lng], zoom);
     },
   });
@@ -503,8 +526,124 @@ interface MarkerData {
   id: string;
 }
 
+// R-tree bounding box interface for spatial indexing
+interface MarkerBBox {
+  minX: number; // longitude
+  minY: number; // latitude
+  maxX: number; // longitude
+  maxY: number; // latitude
+  marker: MarkerData;
+}
+
+// ============================================
+// LazyPopupContent - Only renders full content when popup opens (Phase 7)
+// ============================================
+interface LazyPopupContentProps {
+  item: MergedEquipment;
+  onViewDetails: (e: React.MouseEvent) => void;
+}
+
+const LazyPopupContent: React.FC<LazyPopupContentProps> = React.memo(({ item, onViewDetails }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Lazy load content after a short delay to prioritize popup opening
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => {
+      setIsLoaded(true);
+    });
+    return () => cancelAnimationFrame(timer);
+  }, []);
+
+  // Check for photo
+  const hasPhoto = item["Foto Referência"] && item["Foto Referência"].length > 0;
+  
+  // Check for panel data - prefer merged _panelData, fallback to legacy fields
+  const hasMergedData = '_hasPanelData' in item && item._hasPanelData && '_panelData' in item;
+  
+  const hasDigital = hasMergedData && item._panelData
+    ? item._panelData.hasDigital
+    : (item["Painel Digital"] && item["Painel Digital"] !== "" && item["Painel Digital"] !== "-");
+    
+  const hasStatic = hasMergedData && item._panelData
+    ? item._panelData.hasStatic
+    : (item["Painel Estático - Tipo"] && item["Painel Estático - Tipo"] !== "" && item["Painel Estático - Tipo"] !== "-");
+
+  // Show minimal content initially, then full content
+  if (!isLoaded) {
+    return (
+      <div className="equipment-popup">
+        <div className="popup-header">
+          <span className="popup-id">{item["Nº Eletro"] || 'N/A'}</span>
+        </div>
+        <div className="text-xs text-gray-400">Carregando...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="equipment-popup">
+      {/* Header with ID and Status */}
+      <div className="popup-header">
+        <span className="popup-id">
+          {item["Nº Eletro"] || 'N/A'}
+        </span>
+        {item["Status"] && item["Status"] !== "-" && (
+          <span className={`popup-status ${item["Status"] === "Ativo" ? 'status-active' : 'status-inactive'}`}>
+            {item["Status"]}
+          </span>
+        )}
+      </div>
+      
+      {/* Model Name */}
+      <h3 className="popup-title">
+        {item["Modelo de Abrigo"] || item["Modelo"] || 'Sem modelo'}
+      </h3>
+      
+      {/* Address */}
+      {item["Endereço"] && (
+        <p className="popup-address">
+          {item["Endereço"]}
+        </p>
+      )}
+
+      {/* Quick Info Row - Shows Photo, Digital, and Static badges */}
+      <div className="popup-info-row">
+        {hasPhoto && (
+          <span className="popup-info-badge">
+            <Image className="w-3 h-3" />
+            Foto
+          </span>
+        )}
+        {hasDigital && (
+          <span className="popup-info-badge popup-info-digital">
+            <Smartphone className="w-3 h-3" />
+            Digital
+          </span>
+        )}
+        {hasStatic && (
+          <span className="popup-info-badge popup-info-static">
+            <Box className="w-3 h-3" />
+            Estático
+          </span>
+        )}
+      </div>
+
+      {/* Action Button */}
+      <button
+        onClick={onViewDetails}
+        className="popup-button"
+      >
+        Ver Detalhes
+      </button>
+    </div>
+  );
+});
+
+LazyPopupContent.displayName = 'LazyPopupContent';
+
 // ============================================
 // Optimized Marker Component using CircleMarker (Canvas-based)
+// Uses LazyPopupContent for Phase 7 optimization
 // ============================================
 const OptimizedMarker: React.FC<{
   data: MarkerData;
@@ -514,20 +653,6 @@ const OptimizedMarker: React.FC<{
     e.stopPropagation();
     onClick(data.item);
   }, [data.item, onClick]);
-
-  // Check for photo
-  const hasPhoto = data.item["Foto Referência"] && data.item["Foto Referência"].length > 0;
-  
-  // Check for panel data - prefer merged _panelData, fallback to legacy fields
-  const hasMergedData = '_hasPanelData' in data.item && data.item._hasPanelData && '_panelData' in data.item;
-  
-  const hasDigital = hasMergedData && data.item._panelData
-    ? data.item._panelData.hasDigital
-    : (data.item["Painel Digital"] && data.item["Painel Digital"] !== "" && data.item["Painel Digital"] !== "-");
-    
-  const hasStatic = hasMergedData && data.item._panelData
-    ? data.item._panelData.hasStatic
-    : (data.item["Painel Estático - Tipo"] && data.item["Painel Estático - Tipo"] !== "" && data.item["Painel Estático - Tipo"] !== "-");
 
   return (
     <CircleMarker
@@ -542,61 +667,7 @@ const OptimizedMarker: React.FC<{
       }}
     >
       <Popup className="custom-popup">
-        <div className="equipment-popup">
-          {/* Header with ID and Status */}
-          <div className="popup-header">
-            <span className="popup-id">
-              {data.item["Nº Eletro"] || 'N/A'}
-            </span>
-            {data.item["Status"] && data.item["Status"] !== "-" && (
-              <span className={`popup-status ${data.item["Status"] === "Ativo" ? 'status-active' : 'status-inactive'}`}>
-                {data.item["Status"]}
-              </span>
-            )}
-          </div>
-          
-          {/* Model Name */}
-          <h3 className="popup-title">
-            {data.item["Modelo de Abrigo"] || data.item["Modelo"] || 'Sem modelo'}
-          </h3>
-          
-          {/* Address */}
-          {data.item["Endereço"] && (
-            <p className="popup-address">
-              {data.item["Endereço"]}
-            </p>
-          )}
-
-          {/* Quick Info Row - Shows Photo, Digital, and Static badges */}
-          <div className="popup-info-row">
-            {hasPhoto && (
-              <span className="popup-info-badge">
-                <Image className="w-3 h-3" />
-                Foto
-              </span>
-            )}
-            {hasDigital && (
-              <span className="popup-info-badge popup-info-digital">
-                <Smartphone className="w-3 h-3" />
-                Digital
-              </span>
-            )}
-            {hasStatic && (
-              <span className="popup-info-badge popup-info-static">
-                <Box className="w-3 h-3" />
-                Estático
-              </span>
-            )}
-          </div>
-
-          {/* Action Button */}
-          <button
-            onClick={handleViewDetails}
-            className="popup-button"
-          >
-            Ver Detalhes
-          </button>
-        </div>
+        <LazyPopupContent item={data.item} onViewDetails={handleViewDetails} />
       </Popup>
     </CircleMarker>
   );
@@ -619,18 +690,21 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   const [mapKey, setMapKey] = useState(0);
   const [containerHeight, setContainerHeight] = useState<string>('calc(100vh - 200px)');
   
-  // Restore filters from cache or use defaults
-  const [mapFilters, setMapFilters] = useState<MapFiltersState>(() => {
-    const cached = mapStateCache.getFilters();
-    return cached || {
-      shelterModel: [],
-      panelType: [],
-      hasPhoto: false,
-    };
+  // Filters state - loaded from cache asynchronously
+  const [mapFilters, setMapFilters] = useState<MapFiltersState>({
+    shelterModel: [],
+    panelType: [],
+    hasPhoto: false,
   });
   
-  // Restore view state from cache
-  const [initialViewState] = useState(() => mapStateCache.getViewState());
+  // View state - loaded from cache asynchronously
+  const [initialViewState, setInitialViewState] = useState<{ center: [number, number]; zoom: number } | null>(null);
+  
+  // Cache initialization state
+  const [isCacheLoaded, setIsCacheLoaded] = useState(false);
+  
+  // Pre-loaded markers from IndexedDB cache
+  const [cachedMarkersData, setCachedMarkersData] = useState<CacheMarkerData[] | null>(null);
   
   // Progressive loading state
   const [loadedMarkers, setLoadedMarkers] = useState<MarkerData[]>([]);
@@ -646,10 +720,48 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   // Debounce filters to prevent rapid re-renders
   const debouncedFilters = useDebounce(mapFilters, 150);
   
+  // Load cached state on mount (async)
+  useEffect(() => {
+    const loadCachedState = async () => {
+      try {
+        await mapDataCache.init();
+        
+        // Load filters, view state, and markers in parallel
+        const [filters, viewState, markers] = await Promise.all([
+          mapDataCache.getFilters(),
+          mapDataCache.getViewState(),
+          mapDataCache.loadMarkers(),
+        ]);
+        
+        if (filters) {
+          setMapFilters(filters);
+        }
+        
+        if (viewState) {
+          setInitialViewState(viewState);
+        }
+        
+        if (markers && markers.length > 0) {
+          setCachedMarkersData(markers);
+          console.log(`[MapView] Loaded ${markers.length} cached markers`);
+        }
+        
+        setIsCacheLoaded(true);
+      } catch (e) {
+        console.error('[MapView] Error loading cached state:', e);
+        setIsCacheLoaded(true);
+      }
+    };
+    
+    loadCachedState();
+  }, []);
+  
   // Save filters to cache when they change
   useEffect(() => {
-    mapStateCache.saveFilters(debouncedFilters);
-  }, [debouncedFilters]);
+    if (isCacheLoaded) {
+      mapDataCache.saveFilters(debouncedFilters);
+    }
+  }, [debouncedFilters, isCacheLoaded]);
 
   // Calculate container height to avoid overlapping header
   useEffect(() => {
@@ -701,34 +813,36 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   // Generate equipment hash for cache validation
   const equipmentHash = useMemo(() => {
     const sampleIds = equipment.slice(0, 10).map(e => e["Nº Eletro"] || '').filter(Boolean);
-    return mapStateCache.generateHash(equipment.length, sampleIds);
+    return mapDataCache.generateHash(equipment.length, sampleIds);
   }, [equipment]);
 
   // Pre-filter equipment to only those with valid coordinates
-  // Uses cache if available and valid
+  // Uses pre-loaded cache if available
   const equipmentWithCoords = useMemo(() => {
-    // Check if we have valid cached markers
-    if (mapStateCache.isMarkersCacheValid(equipmentHash)) {
-      const cachedMarkers = mapStateCache.loadMarkers();
-      if (cachedMarkers && cachedMarkers.length > 0) {
-        // Reconstruct MarkerData from cached data + equipment lookup
-        const equipmentMap = new Map(equipment.map(e => [e["Nº Eletro"], e]));
-        
-        return cachedMarkers
-          .map(cached => {
-            const item = equipmentMap.get(cached.nEletro);
-            if (!item) return null;
-            return {
-              item,
-              position: cached.position,
-              id: cached.id,
-            };
-          })
-          .filter((m): m is MarkerData => m !== null);
+    // Use pre-loaded cached markers if available
+    if (cachedMarkersData && cachedMarkersData.length > 0) {
+      // Reconstruct MarkerData from cached data + equipment lookup
+      const equipmentMap = new Map(equipment.map(e => [e["Nº Eletro"], e]));
+      
+      const result = cachedMarkersData
+        .map(cached => {
+          const item = equipmentMap.get(cached.nEletro);
+          if (!item) return null;
+          return {
+            item,
+            position: cached.position,
+            id: cached.id,
+          };
+        })
+        .filter((m): m is MarkerData => m !== null);
+      
+      if (result.length > 0) {
+        console.log(`[MapView] Using ${result.length} cached markers`);
+        return result;
       }
     }
     
-    // Process equipment and extract coordinates
+    // Process equipment and extract coordinates (fallback)
     const processed = equipment.filter(item => {
       const lat = item["Latitude"];
       const lng = item["Longitude"];
@@ -746,33 +860,36 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
       };
     });
     
-    // Save to cache for future use
-    const cacheData: CacheMarkerData[] = processed.map(m => {
-      const hasMergedData = '_hasPanelData' in m.item && m.item._hasPanelData && '_panelData' in m.item;
-      return {
-        id: m.id,
-        position: m.position,
-        nEletro: m.item["Nº Eletro"],
-        status: m.item["Status"],
-        modelo: m.item["Modelo de Abrigo"] || m.item["Modelo"],
-        endereco: m.item["Endereço"],
-        hasPhoto: !!(m.item["Foto Referência"] && m.item["Foto Referência"].length > 0),
-        hasDigital: hasMergedData && m.item._panelData
-          ? m.item._panelData.hasDigital
-          : !!(m.item["Painel Digital"] && m.item["Painel Digital"] !== "" && m.item["Painel Digital"] !== "-"),
-        hasStatic: hasMergedData && m.item._panelData
-          ? m.item._panelData.hasStatic
-          : !!(m.item["Painel Estático - Tipo"] && m.item["Painel Estático - Tipo"] !== "" && m.item["Painel Estático - Tipo"] !== "-"),
-      };
-    });
-    
-    // Save asynchronously to not block rendering
-    setTimeout(() => {
-      mapStateCache.saveMarkers(cacheData, equipmentHash);
-    }, 0);
+    // Save to cache for future use (async, non-blocking)
+    if (processed.length > 0 && isCacheLoaded) {
+      const cacheData: CacheMarkerData[] = processed.map(m => {
+        const hasMergedData = '_hasPanelData' in m.item && m.item._hasPanelData && '_panelData' in m.item;
+        return {
+          id: m.id,
+          position: m.position,
+          nEletro: m.item["Nº Eletro"],
+          status: m.item["Status"],
+          modelo: m.item["Modelo de Abrigo"] || m.item["Modelo"],
+          endereco: m.item["Endereço"],
+          bairro: m.item["Bairro"],
+          hasPhoto: !!(m.item["Foto Referência"] && m.item["Foto Referência"].length > 0),
+          hasDigital: hasMergedData && m.item._panelData
+            ? m.item._panelData.hasDigital
+            : !!(m.item["Painel Digital"] && m.item["Painel Digital"] !== "" && m.item["Painel Digital"] !== "-"),
+          hasStatic: hasMergedData && m.item._panelData
+            ? m.item._panelData.hasStatic
+            : !!(m.item["Painel Estático - Tipo"] && m.item["Painel Estático - Tipo"] !== "" && m.item["Painel Estático - Tipo"] !== "-"),
+        };
+      });
+      
+      // Save asynchronously to not block rendering
+      mapDataCache.saveMarkers(cacheData, equipmentHash).catch(e => {
+        console.warn('[MapView] Failed to cache markers:', e);
+      });
+    }
     
     return processed;
-  }, [equipment, equipmentHash]);
+  }, [equipment, cachedMarkersData, equipmentHash, isCacheLoaded]);
 
   // Apply filters to equipment with coords
   const filteredMarkersData = useMemo(() => {
@@ -877,23 +994,46 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
     };
   }, [filteredMarkersData]);
 
-  // Filter markers by viewport (optional optimization for very large datasets)
+  // Build R-tree spatial index for fast viewport queries (O(log n) vs O(n))
+  const spatialIndex = useMemo(() => {
+    // Only build index for large datasets
+    if (loadedMarkers.length < SPATIAL_INDEX_THRESHOLD) {
+      return null;
+    }
+    
+    const tree = new RBush<MarkerBBox>();
+    const bboxes: MarkerBBox[] = loadedMarkers.map(marker => ({
+      minX: marker.position[1], // longitude
+      minY: marker.position[0], // latitude
+      maxX: marker.position[1],
+      maxY: marker.position[0],
+      marker,
+    }));
+    
+    // Bulk load is much faster than individual inserts
+    tree.load(bboxes);
+    console.log(`[MapView] Built R-tree index with ${loadedMarkers.length} markers`);
+    
+    return tree;
+  }, [loadedMarkers]);
+
+  // Filter markers by viewport using R-tree for O(log n) queries
   const visibleMarkers = useMemo(() => {
-    // Only filter by viewport if we have bounds and more than 5000 markers
-    if (!viewportBounds || loadedMarkers.length < 5000) {
+    // If no spatial index, return all markers (small dataset or no bounds)
+    if (!spatialIndex || !viewportBounds) {
       return loadedMarkers;
     }
 
-    return loadedMarkers.filter(({ position }) => {
-      const [lat, lng] = position;
-      return (
-        lat <= viewportBounds.north &&
-        lat >= viewportBounds.south &&
-        lng <= viewportBounds.east &&
-        lng >= viewportBounds.west
-      );
+    // Use R-tree for fast spatial query
+    const results = spatialIndex.search({
+      minX: viewportBounds.west,  // longitude min
+      minY: viewportBounds.south, // latitude min
+      maxX: viewportBounds.east,  // longitude max
+      maxY: viewportBounds.north, // latitude max
     });
-  }, [loadedMarkers, viewportBounds]);
+    
+    return results.map(bbox => bbox.marker);
+  }, [loadedMarkers, viewportBounds, spatialIndex]);
 
   // Handle marker click
   const handleMarkerClick = useCallback((item: MergedEquipment) => {
@@ -960,6 +1100,7 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
         zoomControl={true}
         scrollWheelZoom={true}
         preferCanvas={true} // Force canvas rendering
+        attributionControl={false} // Hide attribution watermark
       >
         {/* State controller - handles view persistence */}
         <MapStateController
@@ -973,7 +1114,7 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
         {/* Tile layer with dark/light mode switching and performance optimizations */}
         <TileLayerSwitcher isDark={isDark} onLoadingChange={setIsTilesLoading} />
 
-        {/* Marker Cluster Group with optimized settings */}
+        {/* Marker Cluster Group with optimized settings (Phase 6 enhancements) */}
         <MarkerClusterGroup
           chunkedLoading={true}
           chunkDelay={50}
@@ -985,6 +1126,14 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
           disableClusteringAtZoom={17}
           removeOutsideVisibleBounds={true}
           animate={false} // Disable animation for better performance
+          // Phase 6 additional optimizations
+          singleMarkerMode={false} // Keep false - we want full marker functionality
+          zoomToBoundsOnClick={true} // Zoom into cluster on click
+          spiderfyDistanceMultiplier={1.5} // Spread spiderfied markers more
+          polygonOptions={{ // Lighter polygon style for performance
+            stroke: false,
+            fill: false,
+          }}
         >
           {visibleMarkers.map((data) => (
             <OptimizedMarker

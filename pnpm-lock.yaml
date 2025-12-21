@@ -26,6 +26,9 @@ importers:
       lucide-react:
         specifier: ^0.555.0
         version: 0.555.0(react@19.2.1)
+      rbush:
+        specifier: ^4.0.1
+        version: 4.0.1
       react:
         specifier: ^19.2.0
         version: 19.2.1
@@ -57,6 +60,9 @@ importers:
       '@types/node':
         specifier: ^22.14.0
         version: 22.19.2
+      '@types/rbush':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.1.2(vite@6.4.1(@types/node@22.19.2))
@@ -512,6 +518,9 @@ packages:
   '@types/node@22.19.2':
     resolution: {integrity: sha512-LPM2G3Syo1GLzXLGJAKdqoU35XvrWzGJ21/7sgZTUpbkBaOasTj8tjwn6w+hCkqaa1TfJ/w67rJSwYItlJ2mYw==}
 
+  '@types/rbush@4.0.0':
+    resolution: {integrity: sha512-+N+2H39P8X+Hy1I5mC6awlTX54k3FhiUmvt7HWzGJZvF+syUAAxP/stwppS8JE84YHqFgRMv6fCy31202CMFxQ==}
+
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
 
@@ -715,6 +724,12 @@ packages:
   postcss@8.5.6:
     resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
     engines: {node: ^10 || ^12 || >=14}
+
+  quickselect@3.0.0:
+    resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
+
+  rbush@4.0.1:
+    resolution: {integrity: sha512-IP0UpfeWQujYC8Jg162rMNc01Rf0gWMMAb2Uxus/Q0qOFw4lCcq6ZnQEZwUoJqWyUGJ9th7JjwI4yIWo+uvoAQ==}
 
   react-dom@19.2.1:
     resolution: {integrity: sha512-ibrK8llX2a4eOskq1mXKu/TGZj9qzomO+sNfO98M6d9zIPOEhlBkMkBUBLd1vgS0gQsLDBzA+8jJBVXDnfHmJg==}
@@ -1252,6 +1267,8 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/rbush@4.0.0': {}
+
   '@types/use-sync-external-store@0.0.6': {}
 
   '@vitejs/plugin-react@5.1.2(vite@6.4.1(@types/node@22.19.2))':
@@ -1432,6 +1449,12 @@ snapshots:
       nanoid: 3.3.11
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  quickselect@3.0.0: {}
+
+  rbush@4.0.1:
+    dependencies:
+      quickselect: 3.0.0
 
   react-dom@19.2.1(react@19.2.1):
     dependencies:

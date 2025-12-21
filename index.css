@@ -49,6 +49,15 @@ textarea:focus,
         animation: shimmer 1.5s infinite;
     }
 
+    /* Dark mode shimmer */
+    .dark .shimmer {
+        background: linear-gradient(90deg,
+                #374151 0%,
+                #4b5563 50%,
+                #374151 100%);
+        background-size: 200% 100%;
+    }
+
     .no-scrollbar::-webkit-scrollbar {
         display: none;
     }
@@ -469,30 +478,9 @@ textarea:focus,
     }
 }
 
-/* Attribution styling */
+/* Attribution styling - Hidden per user request */
 .leaflet-control-attribution {
-    font-size: 10px;
-    background: rgba(255, 255, 255, 0.8) !important;
-}
-
-.dark .leaflet-control-attribution {
-    background: rgba(24, 24, 27, 0.8) !important;
-    color: #a1a1aa !important;
-}
-
-.dark .leaflet-control-attribution a {
-    color: #ff4f00 !important;
-}
-
-@media (prefers-color-scheme: dark) {
-    .leaflet-control-attribution {
-        background: rgba(24, 24, 27, 0.8) !important;
-        color: #a1a1aa !important;
-    }
-    
-    .leaflet-control-attribution a {
-        color: #ff4f00 !important;
-    }
+    display: none !important;
 }
 
 /* Canvas marker hover effect - handled via Leaflet's pathOptions */

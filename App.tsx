@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchEquipment, fetchPanelsLayer, fetchMainLayer } from './services/api';
 import { layerCache } from './services/layerCache';
+import { mapDataCache, MapMarkerData } from './services/mapDataCache';
 import { stackLayers, createPanelsMap } from './services/layerStacker';
 import { Equipment, MergedEquipment, PanelLayerRecord } from './types';
 import { isAbrigo } from './schemas/equipment';
@@ -8,11 +9,12 @@ import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
 import FilterBar from './components/FilterBar';
 import TabNavigation, { TabType } from './components/TabNavigation';
-import PanelsSyncIndicator from './components/PanelsSyncIndicator';
+import DataSyncIndicator, { SyncProgress } from './components/DataSyncIndicator';
 import MapView from './components/MapView';
 import { Dashboard } from './components/dashboard';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
 import AnimatedPlaceholder from './components/AnimatedPlaceholder';
+import { SkeletonCard } from './components/ui/Skeleton';
 import { useDarkMode } from './hooks/useDarkMode';
 import desktopLogo from './assets/Eletromidia Horizontal (3).png';
 import mobileLogo from './assets/LOGOELETRO.png';
@@ -33,7 +35,12 @@ function App() {
   const [panelsCache, setPanelsCache] = useState<Map<string, PanelLayerRecord>>(new Map());
   const [isCacheReady, setIsCacheReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isPanelsSyncing, setIsPanelsSyncing] = useState(false);
+
+  // New: Initializing state to prevent "no results" flash on first load
+  const [isInitializing, setIsInitializing] = useState(true);
+  
+  // New: Sync progress tracking for the DataSyncIndicator
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
 
   // Filter Visibility State
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -69,6 +76,7 @@ function App() {
   /**
    * Sync main layer data from API to IndexedDB cache.
    * Fetches in chunks and updates UI progressively.
+   * Now updates sync progress for the DataSyncIndicator.
    */
   const syncMainLayer = async (currentCount: number, totalItems: number): Promise<Equipment[]> => {
     let currentOffset = currentCount;
@@ -81,6 +89,13 @@ function App() {
       const dataMap = new Map<string, Equipment>();
       existingData.forEach(item => {
         if (item["Nº Eletro"]) dataMap.set(item["Nº Eletro"], item);
+      });
+
+      // Set initial progress
+      setSyncProgress({
+        current: currentOffset,
+        total: totalItems,
+        phase: 'syncing_main'
       });
 
       while (currentOffset < totalItems) {
@@ -96,6 +111,18 @@ function App() {
         });
 
         currentOffset += chunkSize;
+        
+        // Update progress
+        setSyncProgress({
+          current: Math.min(currentOffset, totalItems),
+          total: totalItems,
+          phase: 'syncing_main'
+        });
+        
+        // Progressively update visible data for better UX
+        allData = Array.from(dataMap.values());
+        const panelsData = await layerCache.getAllPanels();
+        mergeAndUpdateData(allData, panelsData);
       }
 
       allData = Array.from(dataMap.values());
@@ -113,9 +140,9 @@ function App() {
   /**
    * Sync panels layer data from API to IndexedDB cache.
    * Fetches panel-specific data including brand information.
+   * Now updates sync progress for the DataSyncIndicator.
    */
   const syncPanelsLayer = async (): Promise<PanelLayerRecord[]> => {
-    setIsPanelsSyncing(true);
     let currentOffset = 0;
     const chunkSize = 5000;
     const panelsMap = new Map<string, PanelLayerRecord>();
@@ -123,6 +150,13 @@ function App() {
     try {
       // First, get total count
       const { total: totalPanels } = await fetchPanelsLayer({ start: 0, limit: 1 });
+      
+      // Update progress to panels phase
+      setSyncProgress(prev => ({
+        current: 0,
+        total: totalPanels,
+        phase: 'syncing_panels'
+      }));
 
       while (currentOffset < totalPanels) {
         const { data: chunk } = await fetchPanelsLayer({ start: currentOffset, limit: chunkSize });
@@ -137,16 +171,21 @@ function App() {
         });
 
         currentOffset += chunkSize;
+        
+        // Update progress
+        setSyncProgress({
+          current: Math.min(currentOffset, totalPanels),
+          total: totalPanels,
+          phase: 'syncing_panels'
+        });
       }
 
       // Update timestamp
       await layerCache.setLayerTimestamp('panels', Date.now());
 
-      setIsPanelsSyncing(false);
       return Array.from(panelsMap.values());
     } catch (e) {
       console.error("Panels layer sync failed", e);
-      setIsPanelsSyncing(false);
       throw e;
     }
   };
@@ -163,10 +202,102 @@ function App() {
     setPanelsCache(newPanelsMap);
   };
 
+  /**
+   * Pre-process map markers and save to IndexedDB cache.
+   * This runs during initial sync so map is ready when user opens the tab.
+   */
+  const prepareMapData = async (equipment: MergedEquipment[]): Promise<void> => {
+    try {
+      // Initialize map cache
+      await mapDataCache.init();
+      
+      // Generate hash for cache validation
+      const sampleIds = equipment.slice(0, 10).map(e => e["Nº Eletro"] || '').filter(Boolean);
+      const equipmentHash = mapDataCache.generateHash(equipment.length, sampleIds);
+      
+      // Check if cache is already valid
+      const isValid = await mapDataCache.isMarkersCacheValid(equipmentHash);
+      if (isValid) {
+        console.log('[MapPrep] Cache is valid, skipping marker processing');
+        return;
+      }
+      
+      // Update progress indicator
+      setSyncProgress({
+        current: 0,
+        total: equipment.length,
+        phase: 'preparing_map'
+      });
+      
+      // Process equipment to extract valid markers
+      const markers: MapMarkerData[] = [];
+      const chunkSize = 1000;
+      
+      for (let i = 0; i < equipment.length; i += chunkSize) {
+        const chunk = equipment.slice(i, i + chunkSize);
+        
+        for (const item of chunk) {
+          const lat = item["Latitude"];
+          const lng = item["Longitude"];
+          
+          // Skip items without valid coordinates
+          if (!lat || !lng || lat === '-' || lng === '-') continue;
+          
+          const latNum = typeof lat === 'number' ? lat : parseFloat(String(lat));
+          const lngNum = typeof lng === 'number' ? lng : parseFloat(String(lng));
+          
+          if (isNaN(latNum) || isNaN(lngNum)) continue;
+          
+          // Check for panel data
+          const hasMergedData = '_hasPanelData' in item && item._hasPanelData && '_panelData' in item;
+          
+          markers.push({
+            id: item["Nº Eletro"] || `${latNum}-${lngNum}`,
+            position: [latNum, lngNum],
+            nEletro: item["Nº Eletro"],
+            status: item["Status"],
+            modelo: item["Modelo de Abrigo"] || item["Modelo"],
+            endereco: item["Endereço"],
+            bairro: item["Bairro"],
+            hasPhoto: !!(item["Foto Referência"] && item["Foto Referência"].length > 0),
+            hasDigital: hasMergedData && item._panelData
+              ? item._panelData.hasDigital
+              : !!(item["Painel Digital"] && item["Painel Digital"] !== "" && item["Painel Digital"] !== "-"),
+            hasStatic: hasMergedData && item._panelData
+              ? item._panelData.hasStatic
+              : !!(item["Painel Estático - Tipo"] && item["Painel Estático - Tipo"] !== "" && item["Painel Estático - Tipo"] !== "-"),
+          });
+        }
+        
+        // Update progress
+        setSyncProgress({
+          current: Math.min(i + chunkSize, equipment.length),
+          total: equipment.length,
+          phase: 'preparing_map'
+        });
+        
+        // Yield to main thread to prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      
+      // Save markers to IndexedDB
+      await mapDataCache.saveMarkers(markers, equipmentHash);
+      console.log(`[MapPrep] Saved ${markers.length} markers to cache`);
+      
+    } catch (e) {
+      console.error('[MapPrep] Error preparing map data:', e);
+      // Don't throw - map prep failure shouldn't block the app
+    }
+  };
+
   // Initial load logic (Layer-based IndexedDB + Background Sync)
+  // IMPROVED: Now fetches first 1k records immediately to prevent "no results" flash
   useEffect(() => {
     const loadInitialData = async () => {
+      setIsInitializing(true);
       setLoading(true);
+      setSyncProgress({ current: 0, total: 0, phase: 'initializing' });
+      
       try {
         // Initialize layer cache
         await layerCache.init();
@@ -177,20 +308,40 @@ function App() {
           layerCache.getAllPanels()
         ]);
 
-        // If we have cached main data, show it immediately
+        // Get API total for comparison (we need this regardless)
+        const { total: apiTotal } = await fetchEquipment({ start: 0, limit: 1 });
+
+        // PHASE 1: Show data immediately if we have cache
         if (cachedMain.length > 0) {
           mergeAndUpdateData(cachedMain, cachedPanels);
+          setIsInitializing(false);
           setLoading(false);
+        } else {
+          // No cache - fetch first 1000 records immediately for quick display
+          setSyncProgress({ current: 0, total: apiTotal, phase: 'loading' });
+          
+          const { data: firstBatch } = await fetchMainLayer({ start: 0, limit: 1000 });
+          
+          // Show the first batch immediately
+          mergeAndUpdateData(firstBatch, []);
+          setIsInitializing(false);
+          setLoading(false);
+          
+          // Save to cache for persistence
+          await layerCache.saveMainChunk(firstBatch);
+          
+          setSyncProgress({ 
+            current: firstBatch.length, 
+            total: apiTotal, 
+            phase: 'syncing_main' 
+          });
         }
 
-        // Check if layers need syncing
+        // PHASE 2: Check if layers need background syncing
         const [mainStale, panelsStale] = await Promise.all([
           layerCache.isLayerStale('main'),
           layerCache.isLayerStale('panels')
         ]);
-
-        // Get API total for comparison
-        const { total: apiTotal } = await fetchEquipment({ start: 0, limit: 1 });
 
         // Determine if we need to sync
         const needsMainSync = mainStale || cachedMain.length < apiTotal;
@@ -199,27 +350,42 @@ function App() {
         if (needsMainSync || needsPanelsSync) {
           setIsSyncing(true);
 
-          // Sync layers in parallel
-          const syncPromises: Promise<any>[] = [];
-
+          // Sync main layer first (more critical), then panels
           if (needsMainSync) {
-            syncPromises.push(syncMainLayer(cachedMain.length, apiTotal));
+            const finalMain = await syncMainLayer(cachedMain.length, apiTotal);
+            
+            // Update data with synced main layer
+            const currentPanels = await layerCache.getAllPanels();
+            mergeAndUpdateData(finalMain, currentPanels);
           }
 
           if (needsPanelsSync) {
-            syncPromises.push(syncPanelsLayer());
+            const finalPanels = await syncPanelsLayer();
+            
+            // Update data with synced panels
+            const currentMain = await layerCache.getAllMain();
+            mergeAndUpdateData(currentMain, finalPanels);
           }
 
-          const results = await Promise.all(syncPromises);
+          // PHASE 3: Pre-process map data in background
+          // Get the final merged data for map preparation
+          const finalData = stackLayers(
+            await layerCache.getAllMain(),
+            await layerCache.getAllPanels()
+          );
+          await prepareMapData(finalData);
 
-          // Get final data
-          const finalMain = needsMainSync ? results[0] : cachedMain;
-          const finalPanels = needsPanelsSync 
-            ? (needsMainSync ? results[1] : results[0]) 
-            : cachedPanels;
-
-          mergeAndUpdateData(finalMain, finalPanels);
-          setIsSyncing(false);
+          // Mark sync as complete
+          setSyncProgress(prev => prev ? { ...prev, phase: 'complete' } : null);
+          
+          // Hide indicator after a short delay
+          setTimeout(() => {
+            setIsSyncing(false);
+            setSyncProgress(null);
+          }, 2000);
+        } else {
+          // No sync needed - data is up to date
+          setSyncProgress(null);
         }
 
         setIsCacheReady(true);
@@ -227,9 +393,10 @@ function App() {
       } catch (err) {
         console.error(err);
         setError('Não foi possível carregar os dados iniciais. Tente buscar algo.');
+        setSyncProgress(null);
       } finally {
+        setIsInitializing(false);
         setLoading(false);
-        setIsSyncing(false);
       }
     };
     loadInitialData();
@@ -773,13 +940,23 @@ function App() {
               </div>
             )}
 
-            {!loading && !error && filteredAndSortedData.length === 0 && (
+            {/* No Results Message - Only show when NOT initializing */}
+            {!isInitializing && !loading && !error && filteredAndSortedData.length === 0 && (
               <div className="text-center py-20">
                 <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                   <SearchIcon className="text-gray-400 w-8 h-8" />
                 </div>
                 <h3 className="text-gray-600 dark:text-gray-300 font-medium text-lg">Nenhum equipamento encontrado</h3>
                 <p className="text-gray-400 dark:text-gray-500">Tente ajustar seus filtros ou buscar por outro termo.</p>
+              </div>
+            )}
+
+            {/* Initial Loading Skeleton - Show during first page load */}
+            {isInitializing && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {[...Array(12)].map((_, i) => (
+                  <SkeletonCard key={i} />
+                ))}
               </div>
             )}
 
@@ -797,22 +974,6 @@ function App() {
               );
             })}
           </div>
-
-          {/* Loading Skeleton for Initial Load */}
-          {loading && data.length === 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="bg-white dark:bg-gray-800 h-80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-                  <div className="h-48 shimmer"></div>
-                  <div className="p-4 space-y-3">
-                    <div className="h-4 shimmer rounded w-3/4"></div>
-                    <div className="h-4 shimmer rounded w-1/2"></div>
-                    <div className="h-8 shimmer rounded w-full mt-4"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Sentinel for Infinite Scroll (positioned to trigger before the button) */}
           {visibleCount < filteredAndSortedData.length && (
@@ -844,8 +1005,11 @@ function App() {
         onClose={closeDetail}
       />
 
-      {/* Panels Sync Indicator - Creative loading animation */}
-      <PanelsSyncIndicator isVisible={isPanelsSyncing} />
+      {/* Data Sync Indicator - Shows progress during data sync */}
+      <DataSyncIndicator 
+        isVisible={isSyncing || syncProgress?.phase === 'loading'} 
+        progress={syncProgress}
+      />
 
     </div>
   );

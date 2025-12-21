@@ -38,7 +38,7 @@ Skeleton.displayName = 'Skeleton';
 
 // Pre-built skeleton components for common use cases
 export const SkeletonCard: React.FC<{ className?: string }> = ({ className }) => (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden', className)}>
+    <div className={cn('bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden', className)}>
         <Skeleton className="h-48 w-full" variant="rectangular" />
         <div className="p-4 space-y-3">
             <Skeleton className="h-4 w-3/4" />
@@ -49,7 +49,7 @@ export const SkeletonCard: React.FC<{ className?: string }> = ({ className }) =>
 );
 
 export const SkeletonStatsCard: React.FC<{ className?: string }> = ({ className }) => (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-6', className)}>
+    <div className={cn('bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6', className)}>
         <div className="flex items-start justify-between">
             <div className="space-y-2">
                 <Skeleton className="h-4 w-24" />
@@ -61,7 +61,7 @@ export const SkeletonStatsCard: React.FC<{ className?: string }> = ({ className 
 );
 
 export const SkeletonChart: React.FC<{ className?: string }> = ({ className }) => (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-6', className)}>
+    <div className={cn('bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6', className)}>
         <Skeleton className="h-4 w-32 mb-4" />
         <div className="space-y-2">
             {[...Array(5)].map((_, i) => (
@@ -75,11 +75,11 @@ export const SkeletonChart: React.FC<{ className?: string }> = ({ className }) =
 );
 
 export const SkeletonTable: React.FC<{ rows?: number; className?: string }> = ({ rows = 5, className }) => (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden', className)}>
-        <div className="p-4 border-b border-gray-100">
+    <div className={cn('bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden', className)}>
+        <div className="p-4 border-b border-gray-100 dark:border-gray-700">
             <Skeleton className="h-6 w-48" />
         </div>
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {[...Array(rows)].map((_, i) => (
                 <div key={i} className="p-4 flex items-center gap-4">
                     <Skeleton className="h-4 w-20" />
