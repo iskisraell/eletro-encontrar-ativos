@@ -470,6 +470,96 @@ const FilterBar: React.FC<FilterBarProps> = ({
         );
     }
 
+    // Map tab: Compact inline layout with all 3 filters in a single row (no collapse)
+    if (activeTab === 'map') {
+        return (
+            <div className="bg-white/90 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 sticky top-[152px] z-20 shadow-sm py-3">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-4">
+                        {/* Filters Label with Icon */}
+                        <div className="flex items-center text-gray-700 dark:text-gray-200 font-semibold whitespace-nowrap">
+                            <div className="relative mr-2">
+                                <Filter className="w-5 h-5 text-eletro-orange" />
+                                <AnimatePresence>
+                                    {activeCount > 0 && (
+                                        <motion.span 
+                                            initial={{ scale: 0, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            exit={{ scale: 0, opacity: 0 }}
+                                            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                                            className="absolute -top-2 -right-2 bg-eletro-orange text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-950 shadow-sm"
+                                        >
+                                            {activeCount}
+                                        </motion.span>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                            <span className="hidden sm:inline">Filtros</span>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
+
+                        {/* Inline Filters - All 3 in a row */}
+                        <div className="flex items-center gap-3 flex-1">
+                            {/* Modelo */}
+                            <div className="w-48">
+                                <MultiSelectDropdown
+                                    label="Modelo"
+                                    icon={<Home className="h-4 w-4" />}
+                                    options={options.shelterModels}
+                                    selected={filters.shelterModel}
+                                    onChange={(val) => onFilterChange('shelterModel', val)}
+                                />
+                            </div>
+                            {/* Painéis */}
+                            <div className="w-48">
+                                <MultiSelectDropdown
+                                    label="Painéis"
+                                    icon={<PanelTop className="h-4 w-4" />}
+                                    options={options.panelTypes}
+                                    selected={filters.panelType.map(t => 
+                                        t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis'
+                                    )}
+                                    onChange={(val) => onFilterChange('panelType', val.map(v =>
+                                        v === 'Painel Digital' ? 'digital' : v === 'Painel Estático' ? 'static' : 'none'
+                                    ))}
+                                />
+                            </div>
+                            {/* Com Foto */}
+                            <button
+                                onClick={() => onFilterChange('hasPhoto', !filters.hasPhoto)}
+                                className={`flex items-center justify-center px-4 py-2 border rounded-md text-sm font-medium transition-colors whitespace-nowrap ${filters.hasPhoto
+                                    ? 'bg-eletro-orange text-white border-eletro-orange'
+                                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                    }`}
+                            >
+                                <Image className={`w-4 h-4 mr-2 ${filters.hasPhoto ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+                                Com Foto
+                                {filters.hasPhoto && <Check className="w-4 h-4 ml-2" />}
+                            </button>
+                        </div>
+
+                        {/* Clear Filters Button */}
+                        {hasActiveFilters && (
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                onClick={onClearFilters}
+                                className="text-[10px] uppercase tracking-wider font-bold text-red-500 hover:text-white hover:bg-red-500 flex items-center bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-md transition-all whitespace-nowrap"
+                            >
+                                <X className="w-3 h-3 mr-1" />
+                                Limpar
+                            </motion.button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Default layout for list and dashboard tabs (with collapse functionality)
     return (
         <motion.div 
             initial={false}

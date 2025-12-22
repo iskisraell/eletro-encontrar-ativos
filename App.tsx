@@ -994,9 +994,9 @@ function App() {
       />
 
 
-      {/* Map View Tab Content - Full width outside main container for full screen effect */}
+      {/* Map View Tab Content - Full width, positioned below FilterBar */}
       {activeTab === 'map' && (
-        <div className="px-4 sm:px-6 lg:px-8 py-4 flex-1" style={{ height: 'calc(100vh - 140px)' }}>
+        <div className="map-container-wrapper px-4 sm:px-6 lg:px-8 mt-2 mb-4 flex-1" style={{ height: 'calc(100vh - 240px)' }}>
           <MapView
             equipment={fullDataCache}
             onSelectEquipment={handleCardClick}
