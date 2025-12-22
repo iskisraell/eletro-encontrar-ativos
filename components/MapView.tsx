@@ -48,29 +48,44 @@ const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.p
 const TILE_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-// Throttle delay for map events (ms)
-const THROTTLE_DELAY = 100;
+// Throttle delay for map events (ms) - optimized for smooth live updates
+const THROTTLE_DELAY = 50;
 
 // Spiderfy configuration
 const SPIDERFY_THRESHOLD = 8; // Max points to show spiderfy
 
 // ============================================
-// Throttle hook for map events
+// Throttle hook for map events - live updates with rate limiting
+// Uses leading edge: updates immediately, then throttles subsequent calls
 // ============================================
 function useThrottle<T>(value: T, delay: number): T {
   const [throttledValue, setThrottledValue] = useState<T>(value);
-  const lastRan = useRef(Date.now());
+  const lastRan = useRef(0);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const handler = setTimeout(() => {
-      if (Date.now() - lastRan.current >= delay) {
+    const now = Date.now();
+    const timeSinceLastRun = now - lastRan.current;
+
+    // If enough time has passed, update immediately (leading edge)
+    if (timeSinceLastRun >= delay) {
+      setThrottledValue(value);
+      lastRan.current = now;
+    } else {
+      // Otherwise, schedule update for when throttle period ends (trailing edge)
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
         setThrottledValue(value);
         lastRan.current = Date.now();
-      }
-    }, delay - (Date.now() - lastRan.current));
+      }, delay - timeSinceLastRun);
+    }
 
     return () => {
-      clearTimeout(handler);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
     };
   }, [value, delay]);
 
@@ -94,7 +109,6 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
   const map = useMap();
   const isInitialized = useRef(false);
   const mapNav = useMapNavigationOptional();
-  const lastNotifyRef = useRef(0);
   
   // Set initial view from cache on mount
   useEffect(() => {
@@ -149,23 +163,20 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
     };
   }, [map, mapNav?.shouldResetView, mapNav]);
   
-  // Throttled view change notification
+  // Notify view changes - called frequently during pan, throttled upstream
   const notifyViewChange = useCallback(() => {
-    const now = Date.now();
-    if (now - lastNotifyRef.current < THROTTLE_DELAY) return;
-    
     const center = map.getCenter();
     const zoom = map.getZoom();
     const bounds = map.getBounds();
     
     mapDataCache.saveViewState([center.lat, center.lng], zoom);
     onViewChange?.([center.lat, center.lng], zoom, bounds);
-    lastNotifyRef.current = now;
   }, [map, onViewChange]);
   
-  // Track view changes with throttling
+  // Track view changes with throttling - including 'move' for live updates during pan
   useMapEvents({
-    moveend: notifyViewChange,
+    move: notifyViewChange,       // Live updates during panning
+    moveend: notifyViewChange,    // Final update when pan ends
     zoomend: notifyViewChange,
     load: notifyViewChange,
   });
@@ -217,9 +228,9 @@ const TileLayerSwitcher: React.FC<TileLayerSwitcherProps> = ({ isDark, onLoading
     <TileLayer
       attribution={TILE_ATTRIBUTION}
       url={isDark ? TILE_DARK : TILE_LIGHT}
-      keepBuffer={4}
-      updateWhenZooming={false}
-      updateWhenIdle={true}
+      keepBuffer={6}             // Increased buffer for smoother panning
+      updateWhenZooming={false}  // Performance: don't fetch during zoom animation
+      updateWhenIdle={false}     // Live updates: fetch tiles while panning
       maxNativeZoom={18}
       maxZoom={19}
       tileSize={256}
@@ -547,13 +558,38 @@ const SharedPopup: React.FC<SharedPopupProps> = ({
 // ClusterLayer - Renders clusters and points from worker
 // With animation tracking for appear/disappear effects
 // ============================================
+interface SpiderfyBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+}
+
 interface ClusterLayerProps {
   clusters: PointOrCluster[];
   equipmentMap: Map<number, MergedEquipment>;
   onClusterClick: (clusterId: number, position: [number, number], count: number) => void;
-  onMarkerClick: (properties: PointProperties, position: [number, number]) => void;
+  onMarkerClick: (properties: PointProperties, position: [number, number], isFromSpider: boolean) => void;
   spiderfiedClusterId: number | null;
+  spiderfiedPointIds: Set<string>;
+  spiderfyBounds: SpiderfyBounds | null;
 }
+
+// Helper function to check if a position is within spiderfy bounds (with padding)
+const isWithinSpiderfyBounds = (
+  lat: number, 
+  lng: number, 
+  bounds: SpiderfyBounds | null,
+  padding: number = 0.0005 // ~50 meters padding
+): boolean => {
+  if (!bounds) return false;
+  return (
+    lat >= bounds.minLat - padding &&
+    lat <= bounds.maxLat + padding &&
+    lng >= bounds.minLng - padding &&
+    lng <= bounds.maxLng + padding
+  );
+};
 
 const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
   clusters,
@@ -561,6 +597,8 @@ const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
   onClusterClick,
   onMarkerClick,
   spiderfiedClusterId,
+  spiderfiedPointIds,
+  spiderfyBounds,
 }) => {
   // Track previous cluster IDs to detect new ones for animation
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -604,6 +642,18 @@ const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
           // Render cluster
           const { cluster_id, point_count } = feature.properties;
           const key = `cluster-${cluster_id}`;
+          
+          // Hide the spiderfied cluster entirely (it's now shown via SpiderfyLayer)
+          if (spiderfiedClusterId === cluster_id) {
+            return null;
+          }
+          
+          // Hide any cluster that falls within the spiderfy bounding box
+          // This prevents new clusters from appearing on top of the spider visualization
+          if (isWithinSpiderfyBounds(position[0], position[1], spiderfyBounds)) {
+            return null;
+          }
+          
           return (
             <ClusterMarker
               key={key}
@@ -612,13 +662,24 @@ const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
               clusterId={cluster_id}
               onClusterClick={onClusterClick}
               isNew={newIds.has(key)}
-              isSpiderfied={spiderfiedClusterId === cluster_id}
+              isSpiderfied={false}
             />
           );
         } else {
           // Render individual point
           const props = feature.properties as PointProperties;
           const key = `point-${props.id}`;
+          
+          // Skip points that are part of the active spiderfy (they're shown via SpiderfyLayer)
+          if (spiderfiedPointIds.has(props.id)) {
+            return null;
+          }
+          
+          // Hide any point that falls within the spiderfy bounding box
+          if (isWithinSpiderfyBounds(position[0], position[1], spiderfyBounds)) {
+            return null;
+          }
+          
           return (
             <PointMarker
               key={key}
@@ -782,6 +843,38 @@ const MapView: React.FC<MapViewProps> = ({
   
   // Spiderfy state for small clusters
   const [spiderfyState, setSpiderfyState] = useState<SpiderfyState | null>(null);
+  
+  // Compute set of spiderfied point IDs to filter them from ClusterLayer
+  const spiderfiedPointIds = useMemo(() => {
+    if (!spiderfyState) return new Set<string>();
+    return new Set(spiderfyState.points.map(p => p.properties.id));
+  }, [spiderfyState]);
+  
+  // Compute bounding box of spiderfied points to filter overlapping clusters
+  const spiderfyBounds = useMemo((): SpiderfyBounds | null => {
+    if (!spiderfyState || spiderfyState.points.length === 0) return null;
+    
+    let minLat = Infinity, maxLat = -Infinity;
+    let minLng = Infinity, maxLng = -Infinity;
+    
+    // Include spiderfy center in bounds calculation
+    const [centerLat, centerLng] = spiderfyState.center;
+    minLat = Math.min(minLat, centerLat);
+    maxLat = Math.max(maxLat, centerLat);
+    minLng = Math.min(minLng, centerLng);
+    maxLng = Math.max(maxLng, centerLng);
+    
+    // Include all spiderfied points
+    spiderfyState.points.forEach(point => {
+      const [lng, lat] = point.geometry.coordinates;
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+    });
+    
+    return { minLat, maxLat, minLng, maxLng };
+  }, [spiderfyState]);
   
   // Convert filters to worker format
   const workerFilters: FilterConfig = useMemo(() => ({
@@ -1024,6 +1117,8 @@ const MapView: React.FC<MapViewProps> = ({
           onClusterClick={handleClusterClick}
           onMarkerClick={handleMarkerClick}
           spiderfiedClusterId={spiderfyState?.clusterId ?? null}
+          spiderfiedPointIds={spiderfiedPointIds}
+          spiderfyBounds={spiderfyBounds}
         />
 
         {/* Spiderfy Layer - shows actual equipment locations from small clusters */}
