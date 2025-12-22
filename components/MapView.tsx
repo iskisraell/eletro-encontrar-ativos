@@ -1,22 +1,40 @@
+/**
+ * MapView Component - Performance Optimized Version
+ * 
+ * This version replaces the DOM-based react-leaflet-cluster with:
+ * 1. Supercluster - Fast geospatial clustering algorithm (runs in Web Worker)
+ * 2. Viewport-based rendering - Only renders visible clusters/markers
+ * 3. DivIcon clusters - Proper z-index handling within Leaflet's layer system
+ * 4. Canvas points - Uses CircleMarker for individual points
+ * 5. Lazy popup - Single shared popup that opens on click
+ * 6. Throttled events - Prevents excessive re-renders during zoom/pan
+ * 7. CSS animations - Scale + fade transitions for appear/disappear
+ * 
+ * Expected INP improvement: 1,408ms → <200ms
+ */
+
 import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
-import MarkerClusterGroup from 'react-leaflet-cluster';
+import { MapContainer, TileLayer, CircleMarker, Popup, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MergedEquipment } from '../types';
 import { useIsDark } from '../hooks/useDarkMode';
-import { isAbrigo } from '../schemas/equipment';
 import { 
   MapPin, X, Loader2,
   BusFront, Camera, Smartphone, Frame, 
   CheckCircle2, XCircle, Eye, Navigation, ExternalLink, Hash
 } from 'lucide-react';
-import {
-  mapDataCache,
-  MapMarkerData as CacheMarkerData,
-} from '../services/mapDataCache';
+import { mapDataCache } from '../services/mapDataCache';
 import { useMapNavigationOptional } from '../contexts/MapNavigationContext';
+import { 
+  useClusterWorker, 
+  isCluster,
+  type PointOrCluster,
+  type PointProperties,
+  type FilterConfig,
+  type GeoJSONPoint,
+} from '../hooks/useClusterWorker';
 
 // Import Leaflet CSS directly in JS for reliable loading
 import 'leaflet/dist/leaflet.css';
@@ -30,55 +48,40 @@ const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.p
 const TILE_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-// Performance constants - optimized for 12k+ markers
-const CHUNK_SIZE = 2000; // Process 2000 markers per chunk (larger = fewer iterations)
-const CHUNK_DELAY = 32; // ~30fps delay between chunks
+// Throttle delay for map events (ms)
+const THROTTLE_DELAY = 100;
 
-// Custom cluster icon creator - simple, no caching (L.divIcon is cheap)
-const createClusterCustomIcon = (cluster: any) => {
-  const count = cluster.getChildCount();
-  let size = 'small';
-  let dimensions = 36;
-
-  if (count >= 100) {
-    size = 'large';
-    dimensions = 52;
-  } else if (count >= 10) {
-    size = 'medium';
-    dimensions = 44;
-  }
-
-  return L.divIcon({
-    html: `<div>${count.toLocaleString()}</div>`,
-    className: `marker-cluster marker-cluster-${size}`,
-    iconSize: L.point(dimensions, dimensions, true),
-  });
-};
+// Spiderfy configuration
+const SPIDERFY_THRESHOLD = 8; // Max points to show spiderfy
 
 // ============================================
-// Debounce hook for filter changes
+// Throttle hook for map events
 // ============================================
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+function useThrottle<T>(value: T, delay: number): T {
+  const [throttledValue, setThrottledValue] = useState<T>(value);
+  const lastRan = useRef(Date.now());
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
+      if (Date.now() - lastRan.current >= delay) {
+        setThrottledValue(value);
+        lastRan.current = Date.now();
+      }
+    }, delay - (Date.now() - lastRan.current));
 
     return () => {
       clearTimeout(handler);
     };
   }, [value, delay]);
 
-  return debouncedValue;
+  return throttledValue;
 }
 
 // ============================================
-// MapStateController - Persists map view state (center/zoom)
+// MapStateController - Persists map view state and handles navigation
 // ============================================
 interface MapStateControllerProps {
-  onViewChange?: (center: [number, number], zoom: number) => void;
+  onViewChange?: (center: [number, number], zoom: number, bounds: L.LatLngBounds) => void;
   initialCenter?: [number, number];
   initialZoom?: number;
 }
@@ -91,6 +94,7 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
   const map = useMap();
   const isInitialized = useRef(false);
   const mapNav = useMapNavigationOptional();
+  const lastNotifyRef = useRef(0);
   
   // Set initial view from cache on mount
   useEffect(() => {
@@ -107,13 +111,11 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
     const { lat, lng, zoom } = mapNav.flyToTarget;
     const targetZoom = zoom || 18;
     
-    // Fly to the target location with smooth animation
     map.flyTo([lat, lng], targetZoom, {
       duration: 1.5,
       easeLinearity: 0.25,
     });
     
-    // Listen for the animation to complete
     const handleMoveEnd = () => {
       mapNav.clearFlyTarget();
       map.off('moveend', handleMoveEnd);
@@ -130,13 +132,11 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
   useEffect(() => {
     if (!mapNav?.shouldResetView) return;
     
-    // Fly back to São Paulo center
     map.flyTo(SAO_PAULO_CENTER, DEFAULT_ZOOM, {
       duration: 1.2,
       easeLinearity: 0.25,
     });
     
-    // Listen for the animation to complete
     const handleMoveEnd = () => {
       mapNav.clearResetFlag();
       map.off('moveend', handleMoveEnd);
@@ -149,28 +149,36 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
     };
   }, [map, mapNav?.shouldResetView, mapNav]);
   
-  // Track view changes and save to cache
+  // Throttled view change notification
+  const notifyViewChange = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNotifyRef.current < THROTTLE_DELAY) return;
+    
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const bounds = map.getBounds();
+    
+    mapDataCache.saveViewState([center.lat, center.lng], zoom);
+    onViewChange?.([center.lat, center.lng], zoom, bounds);
+    lastNotifyRef.current = now;
+  }, [map, onViewChange]);
+  
+  // Track view changes with throttling
   useMapEvents({
-    moveend: () => {
-      const center = map.getCenter();
-      const zoom = map.getZoom();
-      mapDataCache.saveViewState([center.lat, center.lng], zoom);
-      onViewChange?.([center.lat, center.lng], zoom);
-    },
-    zoomend: () => {
-      const center = map.getCenter();
-      const zoom = map.getZoom();
-      mapDataCache.saveViewState([center.lat, center.lng], zoom);
-      onViewChange?.([center.lat, center.lng], zoom);
-    },
+    moveend: notifyViewChange,
+    zoomend: notifyViewChange,
+    load: notifyViewChange,
   });
   
-  // Invalidate map size on mount
+  // Initial notification and size invalidation
   useEffect(() => {
     map.invalidateSize();
-    const timer = setTimeout(() => map.invalidateSize(), 100);
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+      notifyViewChange();
+    }, 100);
     return () => clearTimeout(timer);
-  }, [map]);
+  }, [map, notifyViewChange]);
 
   return null;
 };
@@ -190,7 +198,6 @@ const TileLayerSwitcher: React.FC<TileLayerSwitcherProps> = ({ isDark, onLoading
     map.invalidateSize();
   }, [isDark, map]);
 
-  // Track tile loading state
   useEffect(() => {
     if (!onLoadingChange) return;
     
@@ -223,194 +230,290 @@ const TileLayerSwitcher: React.FC<TileLayerSwitcherProps> = ({ isDark, onLoading
 };
 
 // ============================================
-// Internal Marker Data Type (for rendering)
-// ============================================
-interface MarkerData {
-  item: MergedEquipment;
-  position: [number, number];
-  id: string;
-}
-
-// ============================================
-// Optimized Marker Component using CircleMarker (Canvas-based)
-// Inline popup content - react-leaflet handles lazy rendering
-// ============================================
-
 // Helper function to generate Street View URL
-const getStreetViewUrl = (lat: number, lng: number, address?: string) => {
-  // Try Google Maps with Street View layer using coordinates
-  // The cbll parameter sets the Street View position, cbp sets the camera angle
-  const streetViewUrl = `https://www.google.com/maps?layer=c&cbll=${lat},${lng}`;
-  
-  // Fallback to address search if coordinates don't have Street View coverage
-  const addressFallback = address 
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
-    : `https://www.google.com/maps?q=${lat},${lng}`;
-  
-  // We'll use the Street View URL - Google will redirect to address if no coverage
-  return streetViewUrl;
+// ============================================
+const getStreetViewUrl = (lat: number, lng: number) => {
+  return `https://www.google.com/maps?layer=c&cbll=${lat},${lng}`;
 };
 
-const OptimizedMarker: React.FC<{
-  data: MarkerData;
-  onClick: (item: MergedEquipment) => void;
-}> = React.memo(({ data, onClick }) => {
+// ============================================
+// Format cluster count for display
+// ============================================
+const formatClusterCount = (count: number): string => {
+  if (count >= 10000) return `${Math.round(count / 1000)}k`;
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return String(count);
+};
+
+// ============================================
+// Create cluster DivIcon - properly sized with label
+// ============================================
+const createClusterIcon = (count: number, animationClass: string = ''): L.DivIcon => {
+  // Determine size class based on count
+  let sizeClass = 'cluster-small';
+  let size = 36;
+  
+  if (count >= 1000) {
+    sizeClass = 'cluster-xlarge';
+    size = 54;
+  } else if (count >= 100) {
+    sizeClass = 'cluster-large';
+    size = 48;
+  } else if (count >= 10) {
+    sizeClass = 'cluster-medium';
+    size = 42;
+  }
+  
+  const displayCount = formatClusterCount(count);
+  const animClass = animationClass ? ` ${animationClass}` : '';
+  
+  return L.divIcon({
+    html: `<div class="cluster-marker-inner${animClass}">${displayCount}</div>`,
+    className: `cluster-marker-wrapper ${sizeClass}`,
+    iconSize: L.point(size, size),
+    iconAnchor: L.point(size / 2, size / 2),
+  });
+};
+
+// ============================================
+// ClusterMarker - Renders a cluster using DivIcon
+// ============================================
+interface ClusterMarkerProps {
+  position: [number, number];
+  count: number;
+  clusterId: number;
+  onClusterClick: (clusterId: number, position: [number, number], count: number) => void;
+  isNew?: boolean;
+}
+
+const ClusterMarker: React.FC<ClusterMarkerProps> = React.memo(({ 
+  position, 
+  count, 
+  clusterId, 
+  onClusterClick,
+  isNew = false,
+}) => {
+  const icon = useMemo(() => createClusterIcon(count, isNew ? 'cluster-appear' : ''), [count, isNew]);
+
+  const handleClick = useCallback(() => {
+    onClusterClick(clusterId, position, count);
+  }, [clusterId, position, count, onClusterClick]);
+
+  return (
+    <Marker
+      position={position}
+      icon={icon}
+      eventHandlers={{
+        click: handleClick,
+      }}
+    />
+  );
+});
+
+ClusterMarker.displayName = 'ClusterMarker';
+
+// ============================================
+// PointMarker - Renders an individual point (non-cluster)
+// ============================================
+interface PointMarkerProps {
+  position: [number, number];
+  properties: PointProperties;
+  onMarkerClick: (properties: PointProperties, position: [number, number]) => void;
+  isNew?: boolean;
+}
+
+const PointMarker: React.FC<PointMarkerProps> = React.memo(({ 
+  position, 
+  properties, 
+  onMarkerClick,
+  isNew = false,
+}) => {
+  const handleClick = useCallback(() => {
+    onMarkerClick(properties, position);
+  }, [properties, position, onMarkerClick]);
+
+  return (
+    <CircleMarker
+      center={position}
+      radius={7}
+      pathOptions={{
+        fillColor: '#ff4f00',
+        fillOpacity: 0.9,
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        className: isNew ? 'point-appear' : '',
+      }}
+      eventHandlers={{
+        click: handleClick,
+      }}
+    />
+  );
+});
+
+PointMarker.displayName = 'PointMarker';
+
+// ============================================
+// SharedPopup - Single popup component that shows for selected marker
+// ============================================
+interface SharedPopupProps {
+  position: [number, number] | null;
+  equipment: MergedEquipment | null;
+  onClose: () => void;
+  onViewDetails: (item: MergedEquipment) => void;
+}
+
+const SharedPopup: React.FC<SharedPopupProps> = ({ 
+  position, 
+  equipment, 
+  onClose, 
+  onViewDetails 
+}) => {
   const [showLightbox, setShowLightbox] = useState(false);
   const [isClosingLightbox, setIsClosingLightbox] = useState(false);
-  
-  const handleViewDetails = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onClick(data.item);
-  }, [data.item, onClick]);
 
-  const handleOpenLightbox = useCallback((e: React.MouseEvent) => {
+  if (!position || !equipment) return null;
+
+  const handleViewDetails = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onViewDetails(equipment);
+  };
+
+  const handleOpenLightbox = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     setShowLightbox(true);
     setIsClosingLightbox(false);
-  }, []);
+  };
 
-  const handleCloseLightbox = useCallback((e: React.MouseEvent) => {
+  const handleCloseLightbox = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsClosingLightbox(true);
-    // Wait for animation to complete before hiding
     setTimeout(() => {
       setShowLightbox(false);
       setIsClosingLightbox(false);
     }, 200);
-  }, []);
+  };
 
   // Get photo URL
-  const photoUrl = data.item["Foto Referência"];
+  const photoUrl = equipment["Foto Referência"];
   const hasPhoto = photoUrl && photoUrl.length > 0;
   
-  // Check for panel data - prefer merged _panelData, fallback to legacy fields
-  const hasMergedData = '_hasPanelData' in data.item && data.item._hasPanelData && '_panelData' in data.item;
+  // Check for panel data
+  const hasMergedData = '_hasPanelData' in equipment && equipment._hasPanelData && '_panelData' in equipment;
   
-  const hasDigital = hasMergedData && data.item._panelData
-    ? data.item._panelData.hasDigital
-    : (data.item["Painel Digital"] && data.item["Painel Digital"] !== "" && data.item["Painel Digital"] !== "-");
+  const hasDigital = hasMergedData && equipment._panelData
+    ? equipment._panelData.hasDigital
+    : (equipment["Painel Digital"] && equipment["Painel Digital"] !== "" && equipment["Painel Digital"] !== "-");
     
-  const hasStatic = hasMergedData && data.item._panelData
-    ? data.item._panelData.hasStatic
-    : (data.item["Painel Estático - Tipo"] && data.item["Painel Estático - Tipo"] !== "" && data.item["Painel Estático - Tipo"] !== "-");
+  const hasStatic = hasMergedData && equipment._panelData
+    ? equipment._panelData.hasStatic
+    : (equipment["Painel Estático - Tipo"] && equipment["Painel Estático - Tipo"] !== "" && equipment["Painel Estático - Tipo"] !== "-");
 
   // Generate Street View URL
-  const streetViewUrl = getStreetViewUrl(
-    data.position[0], 
-    data.position[1], 
-    data.item["Endereço"]
-  );
+  const streetViewUrl = getStreetViewUrl(position[0], position[1]);
 
   // Status info
-  const status = data.item["Status"];
+  const status = equipment["Status"];
   const isActive = status === "Ativo";
   const showStatus = status && status !== "-";
 
   // Model name
-  const modelName = data.item["Modelo de Abrigo"] || data.item["Modelo"] || 'Sem modelo';
+  const modelName = equipment["Modelo de Abrigo"] || equipment["Modelo"] || 'Sem modelo';
 
   return (
     <>
-      <CircleMarker
-        center={data.position}
-        radius={7}
-        pathOptions={{
-          fillColor: '#ff4f00',
-          fillOpacity: 0.9,
-          color: '#ffffff',
-          weight: 2,
-          opacity: 1,
+      <Popup 
+        position={position}
+        className="custom-popup"
+        offset={[0, -7]}
+        autoPan={true}
+        autoPanPadding={[50, 50]}
+        eventHandlers={{
+          remove: onClose,
         }}
       >
-        <Popup 
-          className="custom-popup"
-          offset={[0, -7]}
-          autoPan={true}
-          autoPanPadding={[50, 50]}
-        >
-          <div className="equipment-popup">
-            {/* Header with ID and Status */}
-            <div className="popup-header">
-              <span className="popup-id">
-                <Hash className="w-3 h-3" />
-                {data.item["Nº Eletro"] || 'N/A'}
+        <div className="equipment-popup">
+          {/* Header with ID and Status */}
+          <div className="popup-header">
+            <span className="popup-id">
+              <Hash className="w-3 h-3" />
+              {equipment["Nº Eletro"] || 'N/A'}
+            </span>
+            {showStatus && (
+              <span className={`popup-status ${isActive ? 'status-active' : 'status-inactive'}`}>
+                {isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {status}
               </span>
-              {showStatus && (
-                <span className={`popup-status ${isActive ? 'status-active' : 'status-inactive'}`}>
-                  {isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                  {status}
-                </span>
-              )}
-            </div>
-            
-            {/* Model Name with Bus Stop Icon */}
-            <div className="popup-model-row">
-              <BusFront className="popup-model-icon" />
-              <h3 className="popup-title">{modelName}</h3>
-            </div>
-            
-            {/* Address with Map Pin */}
-            {data.item["Endereço"] && (
-              <div className="popup-address-row">
-                <MapPin className="popup-address-icon" />
-                <p className="popup-address">{data.item["Endereço"]}</p>
-              </div>
             )}
-
-            {/* Feature Badges Row */}
-            <div className="popup-info-row">
-              {hasPhoto && (
-                <button 
-                  className="popup-badge popup-badge-foto"
-                  onClick={handleOpenLightbox}
-                  type="button"
-                >
-                  <Camera className="w-3 h-3" />
-                  Foto
-                </button>
-              )}
-              {hasDigital && (
-                <span className="popup-badge popup-badge-digital">
-                  <Smartphone className="w-3 h-3" />
-                  Digital
-                </span>
-              )}
-              {hasStatic && (
-                <span className="popup-badge popup-badge-static">
-                  <Frame className="w-3 h-3" />
-                  Estático
-                </span>
-              )}
+          </div>
+          
+          {/* Model Name with Bus Stop Icon */}
+          <div className="popup-model-row">
+            <BusFront className="popup-model-icon" />
+            <h3 className="popup-title">{modelName}</h3>
+          </div>
+          
+          {/* Address with Map Pin */}
+          {equipment["Endereço"] && (
+            <div className="popup-address-row">
+              <MapPin className="popup-address-icon" />
+              <p className="popup-address">{equipment["Endereço"]}</p>
             </div>
+          )}
 
-            {/* Action Buttons */}
-            <div className="popup-buttons">
-              <button
-                onClick={handleViewDetails}
-                className="popup-button"
+          {/* Feature Badges Row */}
+          <div className="popup-info-row">
+            {hasPhoto && (
+              <button 
+                className="popup-badge popup-badge-foto"
+                onClick={handleOpenLightbox}
                 type="button"
               >
-                <Eye className="w-4 h-4" />
-                Ver Detalhes
+                <Camera className="w-3 h-3" />
+                Foto
               </button>
-              <a
-                href={streetViewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="popup-button-secondary"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Navigation className="w-4 h-4" />
-                Street View
-                <ExternalLink className="w-3 h-3 opacity-60" />
-              </a>
-            </div>
+            )}
+            {hasDigital && (
+              <span className="popup-badge popup-badge-digital">
+                <Smartphone className="w-3 h-3" />
+                Digital
+              </span>
+            )}
+            {hasStatic && (
+              <span className="popup-badge popup-badge-static">
+                <Frame className="w-3 h-3" />
+                Estático
+              </span>
+            )}
           </div>
-        </Popup>
-      </CircleMarker>
 
-      {/* Lightbox Modal for Photo - rendered via portal to escape Leaflet DOM */}
+          {/* Action Buttons */}
+          <div className="popup-buttons">
+            <button
+              onClick={handleViewDetails}
+              className="popup-button"
+              type="button"
+            >
+              <Eye className="w-4 h-4" />
+              Ver Detalhes
+            </button>
+            <a
+              href={streetViewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="popup-button-secondary"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Navigation className="w-4 h-4" />
+              Street View
+              <ExternalLink className="w-3 h-3 opacity-60" />
+            </a>
+          </div>
+        </div>
+      </Popup>
+
+      {/* Lightbox Modal for Photo */}
       {showLightbox && hasPhoto && ReactDOM.createPortal(
         <div 
           className={`popup-lightbox${isClosingLightbox ? ' closing' : ''}`}
@@ -426,7 +529,7 @@ const OptimizedMarker: React.FC<{
           </button>
           <img 
             src={photoUrl} 
-            alt={`Foto do abrigo ${data.item["Nº Eletro"]}`}
+            alt={`Foto do abrigo ${equipment["Nº Eletro"]}`}
             className="popup-lightbox-image"
             onClick={(e) => e.stopPropagation()}
           />
@@ -435,15 +538,203 @@ const OptimizedMarker: React.FC<{
       )}
     </>
   );
+};
+
+// ============================================
+// ClusterLayer - Renders clusters and points from worker
+// With animation tracking for appear/disappear effects
+// ============================================
+interface ClusterLayerProps {
+  clusters: PointOrCluster[];
+  equipmentMap: Map<number, MergedEquipment>;
+  onClusterClick: (clusterId: number, position: [number, number], count: number) => void;
+  onMarkerClick: (properties: PointProperties, position: [number, number]) => void;
+}
+
+const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
+  clusters,
+  equipmentMap,
+  onClusterClick,
+  onMarkerClick,
+}) => {
+  // Track previous cluster IDs to detect new ones for animation
+  const prevIdsRef = useRef<Set<string>>(new Set());
+  
+  // Get current IDs
+  const currentIds = useMemo(() => {
+    const ids = new Set<string>();
+    clusters.forEach((feature) => {
+      if (isCluster(feature)) {
+        ids.add(`cluster-${feature.properties.cluster_id}`);
+      } else {
+        ids.add(`point-${(feature.properties as PointProperties).id}`);
+      }
+    });
+    return ids;
+  }, [clusters]);
+  
+  // Determine which are new (for animation)
+  const newIds = useMemo(() => {
+    const newSet = new Set<string>();
+    currentIds.forEach(id => {
+      if (!prevIdsRef.current.has(id)) {
+        newSet.add(id);
+      }
+    });
+    return newSet;
+  }, [currentIds]);
+  
+  // Update previous IDs after render
+  useEffect(() => {
+    prevIdsRef.current = currentIds;
+  }, [currentIds]);
+
+  return (
+    <>
+      {clusters.map((feature) => {
+        const [lng, lat] = feature.geometry.coordinates;
+        const position: [number, number] = [lat, lng];
+
+        if (isCluster(feature)) {
+          // Render cluster
+          const { cluster_id, point_count } = feature.properties;
+          const key = `cluster-${cluster_id}`;
+          return (
+            <ClusterMarker
+              key={key}
+              position={position}
+              count={point_count}
+              clusterId={cluster_id}
+              onClusterClick={onClusterClick}
+              isNew={newIds.has(key)}
+            />
+          );
+        } else {
+          // Render individual point
+          const props = feature.properties as PointProperties;
+          const key = `point-${props.id}`;
+          return (
+            <PointMarker
+              key={key}
+              position={position}
+              properties={props}
+              onMarkerClick={onMarkerClick}
+              isNew={newIds.has(key)}
+            />
+          );
+        }
+      })}
+    </>
+  );
 });
 
-OptimizedMarker.displayName = 'OptimizedMarker';
+ClusterLayer.displayName = 'ClusterLayer';
 
 // ============================================
-// MapView - Main Component (Simplified Architecture)
+// SpiderfyLayer - Shows actual equipment locations from a cluster
+// Spider legs connect cluster center to real equipment positions
+// Clicking a point opens the equipment popup
+// ============================================
+interface SpiderfyState {
+  center: [number, number];
+  points: GeoJSONPoint[];
+  clusterId: number;
+}
+
+interface SpiderfyLayerProps {
+  spiderfy: SpiderfyState | null;
+  equipmentMap: Map<number, MergedEquipment>;
+  onPointClick: (properties: PointProperties, position: [number, number]) => void;
+  onClose: () => void;
+}
+
+const SpiderfyLayer: React.FC<SpiderfyLayerProps> = React.memo(({
+  spiderfy,
+  equipmentMap,
+  onPointClick,
+  onClose,
+}) => {
+  // Close spiderfy when map moves or zooms
+  useMapEvents({
+    movestart: onClose,
+    zoomstart: onClose,
+  });
+  
+  if (!spiderfy) return null;
+  
+  const { center, points } = spiderfy;
+  
+  return (
+    <>
+      {/* Spider legs - connect cluster center to actual equipment positions */}
+      {points.map((point) => {
+        const [lng, lat] = point.geometry.coordinates;
+        const actualPosition: [number, number] = [lat, lng];
+        
+        return (
+          <Polyline
+            key={`leg-${point.properties.id}`}
+            positions={[center, actualPosition]}
+            pathOptions={{
+              color: '#ff4f00',
+              weight: 2,
+              opacity: 0.5,
+              dashArray: '4, 6',
+              className: 'spider-leg-line',
+            }}
+          />
+        );
+      })}
+      
+      {/* Center marker (faded cluster position) */}
+      <CircleMarker
+        center={center}
+        radius={16}
+        pathOptions={{
+          fillColor: '#ff4f00',
+          fillOpacity: 0.15,
+          color: '#ff4f00',
+          weight: 2,
+          opacity: 0.3,
+          className: 'spider-center',
+        }}
+      />
+      
+      {/* Actual equipment point markers at their real locations */}
+      {points.map((point) => {
+        const [lng, lat] = point.geometry.coordinates;
+        const actualPosition: [number, number] = [lat, lng];
+        const props = point.properties;
+        
+        return (
+          <CircleMarker
+            key={`spider-point-${props.id}`}
+            center={actualPosition}
+            radius={9}
+            pathOptions={{
+              fillColor: '#ff4f00',
+              fillOpacity: 0.95,
+              color: '#ffffff',
+              weight: 3,
+              opacity: 1,
+              className: 'spider-point-marker',
+            }}
+            eventHandlers={{
+              click: () => onPointClick(props, actualPosition),
+            }}
+          />
+        );
+      })}
+    </>
+  );
+});
+
+SpiderfyLayer.displayName = 'SpiderfyLayer';
+
+// ============================================
+// MapView - Main Component
 // ============================================
 
-// Filter interface matching App.tsx filters structure (subset for map)
 interface MapFilters {
   shelterModel: string[];
   panelType: string[];
@@ -454,9 +745,7 @@ interface MapViewProps {
   equipment: MergedEquipment[];
   onSelectEquipment: (item: MergedEquipment) => void;
   isLoading?: boolean;
-  // Filters now controlled by App.tsx via FilterBar
   filters: MapFilters;
-  // Expose loading/progress state for external display
   onLoadingChange?: (isLoading: boolean, progress: number) => void;
 }
 
@@ -469,78 +758,65 @@ const MapView: React.FC<MapViewProps> = ({
 }) => {
   const isDark = useIsDark();
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
   const [mapKey, setMapKey] = useState(0);
-  const [containerHeight, setContainerHeight] = useState<string>('calc(100vh - 200px)');
   
-  // View state - loaded from cache asynchronously (keep view state caching)
+  // View state
   const [initialViewState, setInitialViewState] = useState<{ center: [number, number]; zoom: number } | null>(null);
-  
-  // Cache initialization state
-  const [isCacheLoaded, setIsCacheLoaded] = useState(false);
-  
-  // Pre-loaded markers from IndexedDB cache
-  const [cachedMarkersData, setCachedMarkersData] = useState<CacheMarkerData[] | null>(null);
-  
-  // Progressive loading state
-  const [loadedMarkers, setLoadedMarkers] = useState<MarkerData[]>([]);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentBounds, setCurrentBounds] = useState<L.LatLngBounds | null>(null);
+  const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
   
   // Tile loading state
   const [isTilesLoading, setIsTilesLoading] = useState(false);
   
-  // Debounce external filters to prevent rapid re-renders during filter changes
-  const debouncedFilters = useDebounce(filters, 150);
+  // Selected marker for popup
+  const [selectedMarker, setSelectedMarker] = useState<{
+    position: [number, number];
+    equipment: MergedEquipment;
+  } | null>(null);
   
-  // Load cached state on mount (async) - only view state and markers, NOT filters
+  // Spiderfy state for small clusters
+  const [spiderfyState, setSpiderfyState] = useState<SpiderfyState | null>(null);
+  
+  // Convert filters to worker format
+  const workerFilters: FilterConfig = useMemo(() => ({
+    shelterModel: filters.shelterModel,
+    panelType: filters.panelType,
+    hasPhoto: filters.hasPhoto,
+  }), [filters.shelterModel, filters.panelType, filters.hasPhoto]);
+  
+  // Use cluster worker
+  const {
+    isReady: workerReady,
+    isLoading: workerLoading,
+    clusters,
+    totalFiltered,
+    equipmentMap,
+    getClusters,
+    getClusterExpansionZoom,
+    getLeaves,
+  } = useClusterWorker(equipment, workerFilters);
+  
+  // Throttle bounds changes to prevent excessive worker calls
+  const throttledBounds = useThrottle(currentBounds, THROTTLE_DELAY);
+  const throttledZoom = useThrottle(currentZoom, THROTTLE_DELAY);
+  
+  // Load cached state on mount
   useEffect(() => {
     const loadCachedState = async () => {
       try {
         await mapDataCache.init();
-        
-        // Load view state and markers in parallel (filters come from App.tsx now)
-        const [viewState, markers] = await Promise.all([
-          mapDataCache.getViewState(),
-          mapDataCache.loadMarkers(),
-        ]);
+        const viewState = await mapDataCache.getViewState();
         
         if (viewState) {
           setInitialViewState(viewState);
         }
-        
-        if (markers && markers.length > 0) {
-          setCachedMarkersData(markers);
-          console.log(`[MapView] Loaded ${markers.length} cached markers`);
-        }
-        
-        setIsCacheLoaded(true);
       } catch (e) {
         console.error('[MapView] Error loading cached state:', e);
-        setIsCacheLoaded(true);
       }
     };
     
     loadCachedState();
-  }, []);
-
-  // Calculate container height to avoid overlapping header
-  useEffect(() => {
-    const calculateHeight = () => {
-      const header = document.querySelector('.sticky.top-0');
-      if (header) {
-        const headerHeight = header.getBoundingClientRect().height;
-        setContainerHeight(`calc(100vh - ${headerHeight + 48}px)`);
-      }
-    };
-    
-    calculateHeight();
-    window.addEventListener('resize', calculateHeight);
-    const timer = setTimeout(calculateHeight, 100);
-    
-    return () => {
-      window.removeEventListener('resize', calculateHeight);
-      clearTimeout(timer);
-    };
   }, []);
 
   // Force map remount when component becomes visible
@@ -551,195 +827,105 @@ const MapView: React.FC<MapViewProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
-  // Generate equipment hash for cache validation
-  const equipmentHash = useMemo(() => {
-    const sampleIds = equipment.slice(0, 10).map(e => e["Nº Eletro"] || '').filter(Boolean);
-    return mapDataCache.generateHash(equipment.length, sampleIds);
-  }, [equipment]);
+  // Request clusters when bounds/zoom change
+  useEffect(() => {
+    if (!workerReady || !throttledBounds) return;
+    
+    const west = throttledBounds.getWest();
+    const south = throttledBounds.getSouth();
+    const east = throttledBounds.getEast();
+    const north = throttledBounds.getNorth();
+    
+    // Supercluster expects bbox as [westLng, southLat, eastLng, northLat]
+    getClusters([west, south, east, north], Math.floor(throttledZoom));
+  }, [workerReady, throttledBounds, throttledZoom, getClusters]);
 
-  // Pre-filter equipment to only those with valid coordinates
-  // Uses pre-loaded cache if available for instant display
-  const equipmentWithCoords = useMemo(() => {
-    // Use pre-loaded cached markers if available
-    if (cachedMarkersData && cachedMarkersData.length > 0) {
-      const equipmentMap = new Map(equipment.map(e => [e["Nº Eletro"], e]));
-      
-      const result = cachedMarkersData
-        .map(cached => {
-          const item = equipmentMap.get(cached.nEletro);
-          if (!item) return null;
-          return {
-            item,
-            position: cached.position,
-            id: cached.id,
-          };
-        })
-        .filter((m): m is MarkerData => m !== null);
-      
-      if (result.length > 0) {
-        console.log(`[MapView] Using ${result.length} cached markers`);
-        return result;
+  // Notify parent about loading state
+  useEffect(() => {
+    const progress = workerReady ? 100 : 0;
+    onLoadingChange?.(workerLoading, progress);
+  }, [workerLoading, workerReady, onLoadingChange]);
+
+  // Handle view change from map
+  const handleViewChange = useCallback((
+    _center: [number, number], 
+    zoom: number, 
+    bounds: L.LatLngBounds
+  ) => {
+    setCurrentBounds(bounds);
+    setCurrentZoom(zoom);
+  }, []);
+
+  // Handle cluster click - zoom to expand or spiderfy for small clusters
+  const handleClusterClick = useCallback(async (clusterId: number, position: [number, number], pointCount?: number) => {
+    if (!mapRef.current) return;
+    
+    // Close any existing spiderfy and popup
+    setSpiderfyState(null);
+    setSelectedMarker(null);
+    
+    try {
+      // For small clusters (≤ threshold points), show spiderfy
+      if (pointCount && pointCount <= SPIDERFY_THRESHOLD) {
+        const leaves = await getLeaves(clusterId, SPIDERFY_THRESHOLD + 5);
+        if (leaves.length > 0) {
+          setSpiderfyState({
+            center: position,
+            points: leaves,
+            clusterId,
+          });
+          return;
+        }
       }
-    }
-    
-    // Process equipment and extract coordinates (fallback)
-    const processed = equipment.filter(item => {
-      const lat = item["Latitude"];
-      const lng = item["Longitude"];
-      if (!lat || !lng || lat === '-' || lng === '-') return false;
-      const latNum = typeof lat === 'number' ? lat : parseFloat(String(lat));
-      const lngNum = typeof lng === 'number' ? lng : parseFloat(String(lng));
-      return !isNaN(latNum) && !isNaN(lngNum);
-    }).map(item => {
-      const lat = typeof item["Latitude"] === 'number' ? item["Latitude"] : parseFloat(String(item["Latitude"]));
-      const lng = typeof item["Longitude"] === 'number' ? item["Longitude"] : parseFloat(String(item["Longitude"]));
-      return {
-        item,
-        position: [lat, lng] as [number, number],
-        id: item["Nº Eletro"] || `${lat}-${lng}`,
-      };
-    });
-    
-    // Save to cache for future use (async, non-blocking)
-    if (processed.length > 0 && isCacheLoaded) {
-      const cacheData: CacheMarkerData[] = processed.map(m => {
-        const hasMergedData = '_hasPanelData' in m.item && m.item._hasPanelData && '_panelData' in m.item;
-        return {
-          id: m.id,
-          position: m.position,
-          nEletro: m.item["Nº Eletro"],
-          status: m.item["Status"],
-          modelo: m.item["Modelo de Abrigo"] || m.item["Modelo"],
-          endereco: m.item["Endereço"],
-          bairro: m.item["Bairro"],
-          hasPhoto: !!(m.item["Foto Referência"] && m.item["Foto Referência"].length > 0),
-          hasDigital: hasMergedData && m.item._panelData
-            ? m.item._panelData.hasDigital
-            : !!(m.item["Painel Digital"] && m.item["Painel Digital"] !== "" && m.item["Painel Digital"] !== "-"),
-          hasStatic: hasMergedData && m.item._panelData
-            ? m.item._panelData.hasStatic
-            : !!(m.item["Painel Estático - Tipo"] && m.item["Painel Estático - Tipo"] !== "" && m.item["Painel Estático - Tipo"] !== "-"),
-        };
-      });
       
-      mapDataCache.saveMarkers(cacheData, equipmentHash).catch(e => {
-        console.warn('[MapView] Failed to cache markers:', e);
+      // For larger clusters, zoom to expansion level
+      const expansionZoom = await getClusterExpansionZoom(clusterId);
+      mapRef.current.flyTo(position, Math.min(expansionZoom, 18), {
+        duration: 0.5,
+      });
+    } catch (e) {
+      console.error('[MapView] Error expanding cluster:', e);
+      // Fallback: zoom in by 2 levels
+      mapRef.current.flyTo(position, Math.min(currentZoom + 2, 18), {
+        duration: 0.5,
       });
     }
-    
-    return processed;
-  }, [equipment, cachedMarkersData, equipmentHash, isCacheLoaded]);
+  }, [getClusterExpansionZoom, getLeaves, currentZoom]);
 
-  // Apply filters to equipment with coords
-  const filteredMarkersData = useMemo(() => {
-    const filters = debouncedFilters;
-    
-    return equipmentWithCoords.filter(({ item }) => {
-      // Apply shelter model filter
-      if (filters.shelterModel.length > 0) {
-        if (!item["Modelo de Abrigo"] || !filters.shelterModel.includes(item["Modelo de Abrigo"])) {
-          return false;
-        }
-      }
+  // Handle spiderfy close
+  const handleSpiderfyClose = useCallback(() => {
+    setSpiderfyState(null);
+  }, []);
 
-      // Apply panel type filter
-      if (filters.panelType.length > 0) {
-        if (!isAbrigo(item)) return false;
-        
-        const hasMergedData = '_hasPanelData' in item && item._hasPanelData && '_panelData' in item;
-        const matchesAny = filters.panelType.some(type => {
-          if (type === 'digital') {
-            if (hasMergedData && item._panelData) return item._panelData.hasDigital;
-            return item['Painel Digital'] && item['Painel Digital'] !== '' && item['Painel Digital'] !== '-';
-          }
-          if (type === 'static') {
-            if (hasMergedData && item._panelData) return item._panelData.hasStatic;
-            return item['Painel Estático - Tipo'] && item['Painel Estático - Tipo'] !== '' && item['Painel Estático - Tipo'] !== '-';
-          }
-          return false;
-        });
-        if (!matchesAny) return false;
-      }
-
-      // Apply has photo filter
-      if (filters.hasPhoto) {
-        if (!item["Foto Referência"] || item["Foto Referência"].length === 0) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [equipmentWithCoords, debouncedFilters]);
-
-  // Progressive loading of markers - simplified without conflicting optimizations
-  useEffect(() => {
-    if (filteredMarkersData.length === 0) {
-      setLoadedMarkers([]);
-      setLoadingProgress(100);
-      setIsProcessing(false);
-      return;
+  // Handle marker click - show popup (works for both regular points and spider points)
+  const handleMarkerClick = useCallback((properties: PointProperties, position: [number, number]) => {
+    const equip = equipmentMap.get(properties.equipmentIndex);
+    if (equip) {
+      // Close spiderfy when opening popup for an equipment
+      setSpiderfyState(null);
+      setSelectedMarker({ position, equipment: equip });
     }
+  }, [equipmentMap]);
 
-    // If we have cached data and it matches, load immediately (skip progressive loading)
-    const isCacheValid = cachedMarkersData && cachedMarkersData.length > 0;
-    if (isCacheValid && filteredMarkersData.length === equipmentWithCoords.length) {
-      // No filters applied and cache is valid - instant load
-      console.log(`[MapView] Cache hit - instant load of ${filteredMarkersData.length} markers`);
-      setLoadedMarkers(filteredMarkersData);
-      setLoadingProgress(100);
-      setIsProcessing(false);
-      return;
-    }
+  // Handle popup close
+  const handlePopupClose = useCallback(() => {
+    setSelectedMarker(null);
+  }, []);
 
-    // Progressive loading for non-cached or filtered data
-    setIsProcessing(true);
-    setLoadingProgress(0);
-    setLoadedMarkers([]);
-
-    let currentIndex = 0;
-    const totalItems = filteredMarkersData.length;
-    let cancelled = false;
-
-    const processChunk = () => {
-      if (cancelled) return;
-      
-      if (currentIndex < totalItems) {
-        const endIndex = Math.min(currentIndex + CHUNK_SIZE, totalItems);
-        const chunk = filteredMarkersData.slice(currentIndex, endIndex);
-        
-        setLoadedMarkers(prev => [...prev, ...chunk]);
-        currentIndex = endIndex;
-        setLoadingProgress((currentIndex / totalItems) * 100);
-
-        if (currentIndex < totalItems) {
-          setTimeout(processChunk, CHUNK_DELAY);
-        } else {
-          setIsProcessing(false);
-        }
-      } else {
-        setIsProcessing(false);
-      }
-    };
-
-    // Start processing with a small delay to allow UI to render
-    const startTimer = setTimeout(processChunk, 10);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(startTimer);
-    };
-  }, [filteredMarkersData, cachedMarkersData, equipmentWithCoords.length]);
-
-  // Notify parent about loading state changes
-  useEffect(() => {
-    onLoadingChange?.(isProcessing, loadingProgress);
-  }, [isProcessing, loadingProgress, onLoadingChange]);
-
-  // Handle marker click
-  const handleMarkerClick = useCallback((item: MergedEquipment) => {
+  // Handle view details from popup
+  const handleViewDetails = useCallback((item: MergedEquipment) => {
+    setSelectedMarker(null);
     onSelectEquipment(item);
   }, [onSelectEquipment]);
+
+  // Store map reference
+  const MapRefSetter = () => {
+    const map = useMap();
+    useEffect(() => {
+      mapRef.current = map;
+    }, [map]);
+    return null;
+  };
 
   if (externalLoading) {
     return (
@@ -778,18 +964,18 @@ const MapView: React.FC<MapViewProps> = ({
       {/* Map Stats Indicator - Top Left */}
       <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-xl shadow-lg px-4 py-2">
         <div className="flex items-center gap-2">
-          {isProcessing ? (
+          {workerLoading ? (
             <>
               <Loader2 className="w-4 h-4 text-eletro-orange animate-spin" />
-              <span className="font-bold text-eletro-orange">{Math.round(loadingProgress)}%</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Processando...</span>
             </>
           ) : (
             <>
               <MapPin className="w-4 h-4 text-eletro-orange" />
-              <span className="font-bold text-eletro-orange">{filteredMarkersData.length.toLocaleString()}</span>
+              <span className="font-bold text-eletro-orange">{totalFiltered.toLocaleString('pt-BR')}</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">pontos</span>
             </>
           )}
-          <span className="text-sm text-gray-500 dark:text-gray-400">pontos</span>
         </div>
       </div>
 
@@ -804,38 +990,42 @@ const MapView: React.FC<MapViewProps> = ({
         preferCanvas={true}
         attributionControl={false}
       >
-        {/* State controller - handles view persistence */}
+        {/* Store map reference */}
+        <MapRefSetter />
+        
+        {/* State controller - handles view persistence and navigation */}
         <MapStateController
           initialCenter={initialViewState?.center}
           initialZoom={initialViewState?.zoom}
+          onViewChange={handleViewChange}
         />
         
         {/* Tile layer with dark/light mode switching */}
         <TileLayerSwitcher isDark={isDark} onLoadingChange={setIsTilesLoading} />
 
-        {/* Marker Cluster Group - animations only after loading complete */}
-        <MarkerClusterGroup
-          chunkedLoading={true}
-          chunkDelay={50}
-          chunkInterval={100}
-          iconCreateFunction={createClusterCustomIcon}
-          maxClusterRadius={80}
-          spiderfyOnMaxZoom={true}
-          showCoverageOnHover={false}
-          disableClusteringAtZoom={17}
-          removeOutsideVisibleBounds={true}
-          animate={!isProcessing}
-          animateAddingMarkers={false}
-          spiderfyDistanceMultiplier={1.5}
-        >
-          {loadedMarkers.map((data) => (
-            <OptimizedMarker
-              key={data.id}
-              data={data}
-              onClick={handleMarkerClick}
-            />
-          ))}
-        </MarkerClusterGroup>
+        {/* Cluster/Point Layer - rendered from worker data */}
+        <ClusterLayer
+          clusters={clusters}
+          equipmentMap={equipmentMap}
+          onClusterClick={handleClusterClick}
+          onMarkerClick={handleMarkerClick}
+        />
+
+        {/* Spiderfy Layer - shows actual equipment locations from small clusters */}
+        <SpiderfyLayer
+          spiderfy={spiderfyState}
+          equipmentMap={equipmentMap}
+          onPointClick={handleMarkerClick}
+          onClose={handleSpiderfyClose}
+        />
+
+        {/* Shared Popup - lazy loaded on marker click */}
+        <SharedPopup
+          position={selectedMarker?.position ?? null}
+          equipment={selectedMarker?.equipment ?? null}
+          onClose={handlePopupClose}
+          onViewDetails={handleViewDetails}
+        />
       </MapContainer>
 
       {/* Mobile Message Overlay */}
