@@ -248,7 +248,7 @@ const formatClusterCount = (count: number): string => {
 // ============================================
 // Create cluster DivIcon - properly sized with label
 // ============================================
-const createClusterIcon = (count: number, animationClass: string = ''): L.DivIcon => {
+const createClusterIcon = (count: number, animationClass: string = '', isSpiderfied: boolean = false): L.DivIcon => {
   // Determine size class based on count
   let sizeClass = 'cluster-small';
   let size = 36;
@@ -266,9 +266,10 @@ const createClusterIcon = (count: number, animationClass: string = ''): L.DivIco
   
   const displayCount = formatClusterCount(count);
   const animClass = animationClass ? ` ${animationClass}` : '';
+  const spiderfiedClass = isSpiderfied ? ' cluster-spiderfied' : '';
   
   return L.divIcon({
-    html: `<div class="cluster-marker-inner${animClass}">${displayCount}</div>`,
+    html: `<div class="cluster-marker-inner${animClass}${spiderfiedClass}">${displayCount}</div>`,
     className: `cluster-marker-wrapper ${sizeClass}`,
     iconSize: L.point(size, size),
     iconAnchor: L.point(size / 2, size / 2),
@@ -284,6 +285,7 @@ interface ClusterMarkerProps {
   clusterId: number;
   onClusterClick: (clusterId: number, position: [number, number], count: number) => void;
   isNew?: boolean;
+  isSpiderfied?: boolean;
 }
 
 const ClusterMarker: React.FC<ClusterMarkerProps> = React.memo(({ 
@@ -292,8 +294,9 @@ const ClusterMarker: React.FC<ClusterMarkerProps> = React.memo(({
   clusterId, 
   onClusterClick,
   isNew = false,
+  isSpiderfied = false,
 }) => {
-  const icon = useMemo(() => createClusterIcon(count, isNew ? 'cluster-appear' : ''), [count, isNew]);
+  const icon = useMemo(() => createClusterIcon(count, isNew ? 'cluster-appear' : '', isSpiderfied), [count, isNew, isSpiderfied]);
 
   const handleClick = useCallback(() => {
     onClusterClick(clusterId, position, count);
@@ -318,7 +321,7 @@ ClusterMarker.displayName = 'ClusterMarker';
 interface PointMarkerProps {
   position: [number, number];
   properties: PointProperties;
-  onMarkerClick: (properties: PointProperties, position: [number, number]) => void;
+  onMarkerClick: (properties: PointProperties, position: [number, number], isFromSpider: boolean) => void;
   isNew?: boolean;
 }
 
@@ -329,7 +332,7 @@ const PointMarker: React.FC<PointMarkerProps> = React.memo(({
   isNew = false,
 }) => {
   const handleClick = useCallback(() => {
-    onMarkerClick(properties, position);
+    onMarkerClick(properties, position, false);
   }, [properties, position, onMarkerClick]);
 
   return (
@@ -549,6 +552,7 @@ interface ClusterLayerProps {
   equipmentMap: Map<number, MergedEquipment>;
   onClusterClick: (clusterId: number, position: [number, number], count: number) => void;
   onMarkerClick: (properties: PointProperties, position: [number, number]) => void;
+  spiderfiedClusterId: number | null;
 }
 
 const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
@@ -556,6 +560,7 @@ const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
   equipmentMap,
   onClusterClick,
   onMarkerClick,
+  spiderfiedClusterId,
 }) => {
   // Track previous cluster IDs to detect new ones for animation
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -607,6 +612,7 @@ const ClusterLayer: React.FC<ClusterLayerProps> = React.memo(({
               clusterId={cluster_id}
               onClusterClick={onClusterClick}
               isNew={newIds.has(key)}
+              isSpiderfied={spiderfiedClusterId === cluster_id}
             />
           );
         } else {
@@ -644,7 +650,7 @@ interface SpiderfyState {
 interface SpiderfyLayerProps {
   spiderfy: SpiderfyState | null;
   equipmentMap: Map<number, MergedEquipment>;
-  onPointClick: (properties: PointProperties, position: [number, number]) => void;
+  onPointClick: (properties: PointProperties, position: [number, number], isFromSpider: boolean) => void;
   onClose: () => void;
 }
 
@@ -654,9 +660,8 @@ const SpiderfyLayer: React.FC<SpiderfyLayerProps> = React.memo(({
   onPointClick,
   onClose,
 }) => {
-  // Close spiderfy when map moves or zooms
+  // Close spiderfy only when map zooms (not when panning)
   useMapEvents({
-    movestart: onClose,
     zoomstart: onClose,
   });
   
@@ -686,16 +691,16 @@ const SpiderfyLayer: React.FC<SpiderfyLayerProps> = React.memo(({
         );
       })}
       
-      {/* Center marker (faded cluster position) */}
+      {/* Center marker (faded cluster position) - subtle since cluster is shrunk */}
       <CircleMarker
         center={center}
-        radius={16}
+        radius={12}
         pathOptions={{
           fillColor: '#ff4f00',
-          fillOpacity: 0.15,
+          fillOpacity: 0.1,
           color: '#ff4f00',
-          weight: 2,
-          opacity: 0.3,
+          weight: 1.5,
+          opacity: 0.2,
           className: 'spider-center',
         }}
       />
@@ -720,7 +725,7 @@ const SpiderfyLayer: React.FC<SpiderfyLayerProps> = React.memo(({
               className: 'spider-point-marker',
             }}
             eventHandlers={{
-              click: () => onPointClick(props, actualPosition),
+              click: () => onPointClick(props, actualPosition, true),
             }}
           />
         );
@@ -869,6 +874,13 @@ const MapView: React.FC<MapViewProps> = ({
       if (pointCount && pointCount <= SPIDERFY_THRESHOLD) {
         const leaves = await getLeaves(clusterId, SPIDERFY_THRESHOLD + 5);
         if (leaves.length > 0) {
+          // Zoom in by 1.5 levels to make spider points more visible
+          const targetZoom = Math.min(currentZoom + 1.5, 18);
+          mapRef.current.flyTo(position, targetZoom, {
+            duration: 0.4,
+          });
+          
+          // Set spiderfy state with clusterId for cluster shrinking
           setSpiderfyState({
             center: position,
             points: leaves,
@@ -898,11 +910,13 @@ const MapView: React.FC<MapViewProps> = ({
   }, []);
 
   // Handle marker click - show popup (works for both regular points and spider points)
-  const handleMarkerClick = useCallback((properties: PointProperties, position: [number, number]) => {
+  const handleMarkerClick = useCallback((properties: PointProperties, position: [number, number], isFromSpider: boolean = false) => {
     const equip = equipmentMap.get(properties.equipmentIndex);
     if (equip) {
-      // Close spiderfy when opening popup for an equipment
-      setSpiderfyState(null);
+      // Only close spiderfy when opening popup for a non-spider marker
+      if (!isFromSpider) {
+        setSpiderfyState(null);
+      }
       setSelectedMarker({ position, equipment: equip });
     }
   }, [equipmentMap]);
@@ -1009,6 +1023,7 @@ const MapView: React.FC<MapViewProps> = ({
           equipmentMap={equipmentMap}
           onClusterClick={handleClusterClick}
           onMarkerClick={handleMarkerClick}
+          spiderfiedClusterId={spiderfyState?.clusterId ?? null}
         />
 
         {/* Spiderfy Layer - shows actual equipment locations from small clusters */}
