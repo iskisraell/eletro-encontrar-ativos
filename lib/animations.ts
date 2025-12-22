@@ -224,3 +224,121 @@ export const verticalSwap: Variants = {
         }
     }
 };
+
+// Search results stack container - staggered entrance/exit
+export const searchResultsContainer: Variants = {
+    hidden: { 
+        opacity: 0,
+        y: -8,
+    },
+    visible: {
+        opacity: 1,
+        y: 0,
+        transition: {
+            duration: 0.2,
+            ease: [0.4, 0, 0.2, 1],
+            staggerChildren: 0.04,
+            delayChildren: 0.02
+        }
+    },
+    exit: {
+        opacity: 0,
+        y: -4,
+        transition: {
+            duration: 0.15,
+            ease: [0.4, 0, 0.2, 1],
+            staggerChildren: 0.02,
+            staggerDirection: -1,
+            when: "afterChildren"
+        }
+    }
+};
+
+// Search result item - poppy spring animation
+export const searchResultItem: Variants = {
+    hidden: { 
+        opacity: 0, 
+        y: -12, 
+        scale: 0.95,
+    },
+    visible: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        transition: {
+            type: "spring",
+            stiffness: 500,
+            damping: 28,
+            mass: 0.8
+        }
+    },
+    exit: {
+        opacity: 0,
+        y: -6,
+        scale: 0.98,
+        transition: { 
+            duration: 0.12,
+            ease: [0.4, 0, 1, 1]
+        }
+    }
+};
+
+// Search result item hover effect
+export const searchResultHover = {
+    rest: { 
+        scale: 1,
+        backgroundColor: "transparent"
+    },
+    hover: {
+        scale: 1.01,
+        transition: { 
+            type: "spring",
+            stiffness: 400,
+            damping: 25
+        }
+    },
+    tap: {
+        scale: 0.99,
+        transition: { duration: 0.1 }
+    }
+};
+
+// Action buttons container in search result
+export const actionButtonsContainer: Variants = {
+    hidden: { 
+        opacity: 0,
+        height: 0,
+        marginTop: 0
+    },
+    visible: {
+        opacity: 1,
+        height: "auto",
+        marginTop: 8,
+        transition: {
+            duration: 0.2,
+            ease: [0.4, 0, 0.2, 1],
+            staggerChildren: 0.05
+        }
+    },
+    exit: {
+        opacity: 0,
+        height: 0,
+        marginTop: 0,
+        transition: { duration: 0.15 }
+    }
+};
+
+// Individual action button
+export const actionButton: Variants = {
+    hidden: { opacity: 0, x: -10 },
+    visible: { 
+        opacity: 1, 
+        x: 0,
+        transition: {
+            type: "spring",
+            stiffness: 400,
+            damping: 25
+        }
+    },
+    exit: { opacity: 0, x: -5 }
+};

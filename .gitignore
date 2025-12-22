@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Windows reserved device names (cannot be committed on Windows)
+nul
+con
+aux
+prn

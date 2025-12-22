@@ -135,6 +135,16 @@ textarea:focus,
 
 /* ===== Leaflet Map Custom Styles ===== */
 
+/* Map container background */
+.leaflet-container {
+    background: #ffffff;
+}
+
+/* Dark mode map background */
+.dark .leaflet-container {
+    background: #090909;
+}
+
 /* Reset Leaflet's default marker icon (prevents broken image) */
 .leaflet-default-icon-path {
     background-image: none;

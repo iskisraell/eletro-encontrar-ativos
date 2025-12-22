@@ -8,15 +8,15 @@ import { MergedEquipment } from '../types';
 import { useIsDark } from '../hooks/useDarkMode';
 import { isAbrigo } from '../schemas/equipment';
 import { 
-  MapPin, Box, Filter, X, Loader2,
+  MapPin, X, Loader2,
   BusFront, Camera, Smartphone, Frame, 
   CheckCircle2, XCircle, Eye, Navigation, ExternalLink, Hash
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { 
+import {
   mapDataCache,
   MapMarkerData as CacheMarkerData,
 } from '../services/mapDataCache';
+import { useMapNavigationOptional } from '../contexts/MapNavigationContext';
 
 // Import Leaflet CSS directly in JS for reliable loading
 import 'leaflet/dist/leaflet.css';
@@ -90,6 +90,7 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
 }) => {
   const map = useMap();
   const isInitialized = useRef(false);
+  const mapNav = useMapNavigationOptional();
   
   // Set initial view from cache on mount
   useEffect(() => {
@@ -98,6 +99,55 @@ const MapStateController: React.FC<MapStateControllerProps> = ({
       isInitialized.current = true;
     }
   }, [map, initialCenter, initialZoom]);
+  
+  // Handle flyTo requests from MapNavigationContext
+  useEffect(() => {
+    if (!mapNav?.flyToTarget) return;
+    
+    const { lat, lng, zoom } = mapNav.flyToTarget;
+    const targetZoom = zoom || 18;
+    
+    // Fly to the target location with smooth animation
+    map.flyTo([lat, lng], targetZoom, {
+      duration: 1.5,
+      easeLinearity: 0.25,
+    });
+    
+    // Listen for the animation to complete
+    const handleMoveEnd = () => {
+      mapNav.clearFlyTarget();
+      map.off('moveend', handleMoveEnd);
+    };
+    
+    map.on('moveend', handleMoveEnd);
+    
+    return () => {
+      map.off('moveend', handleMoveEnd);
+    };
+  }, [map, mapNav?.flyToTarget, mapNav]);
+  
+  // Handle resetView requests from MapNavigationContext
+  useEffect(() => {
+    if (!mapNav?.shouldResetView) return;
+    
+    // Fly back to São Paulo center
+    map.flyTo(SAO_PAULO_CENTER, DEFAULT_ZOOM, {
+      duration: 1.2,
+      easeLinearity: 0.25,
+    });
+    
+    // Listen for the animation to complete
+    const handleMoveEnd = () => {
+      mapNav.clearResetFlag();
+      map.off('moveend', handleMoveEnd);
+    };
+    
+    map.on('moveend', handleMoveEnd);
+    
+    return () => {
+      map.off('moveend', handleMoveEnd);
+    };
+  }, [map, mapNav?.shouldResetView, mapNav]);
   
   // Track view changes and save to cache
   useMapEvents({
@@ -169,271 +219,6 @@ const TileLayerSwitcher: React.FC<TileLayerSwitcherProps> = ({ isDark, onLoading
       zoomOffset={0}
       crossOrigin="anonymous"
     />
-  );
-};
-
-// ============================================
-// MapFilterBar - Filter controls for the map
-// ============================================
-interface MapFiltersState {
-  shelterModel: string[];
-  panelType: string[];
-  hasPhoto: boolean;
-}
-
-interface MapFilterBarProps {
-  filters: MapFiltersState;
-  onFilterChange: (filters: MapFiltersState) => void;
-  shelterModelOptions: { value: string; count: number }[];
-  totalCount: number;
-  filteredCount: number;
-  loadingProgress: number;
-  isLoading: boolean;
-}
-
-const MapFilterBar: React.FC<MapFilterBarProps> = ({
-  filters,
-  onFilterChange,
-  shelterModelOptions,
-  totalCount,
-  filteredCount,
-  loadingProgress,
-  isLoading,
-}) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
-
-  const activeFilterCount = 
-    filters.shelterModel.length + 
-    filters.panelType.length + 
-    (filters.hasPhoto ? 1 : 0);
-
-  const handlePanelTypeToggle = (type: string) => {
-    const newTypes = filters.panelType.includes(type)
-      ? filters.panelType.filter(t => t !== type)
-      : [...filters.panelType, type];
-    onFilterChange({ ...filters, panelType: newTypes });
-  };
-
-  const handleModelToggle = (model: string) => {
-    const newModels = filters.shelterModel.includes(model)
-      ? filters.shelterModel.filter(m => m !== model)
-      : [...filters.shelterModel, model];
-    onFilterChange({ ...filters, shelterModel: newModels });
-  };
-
-  const clearFilters = () => {
-    onFilterChange({ shelterModel: [], panelType: [], hasPhoto: false });
-  };
-
-  return (
-    <>
-      {/* Filter Controls */}
-      <div className="absolute top-4 left-4 z-[500] flex items-start gap-3">
-        {/* Filter Toggle Button */}
-        <motion.button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg backdrop-blur-md transition-all",
-            isExpanded 
-              ? "bg-eletro-orange text-white" 
-              : "bg-white/95 dark:bg-gray-900/95 text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-800"
-          )}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <Filter className="w-4 h-4" />
-          <span className="font-medium text-sm">Filtros</span>
-          {activeFilterCount > 0 && (
-            <span className={cn(
-              "ml-1 px-1.5 py-0.5 text-xs font-bold rounded-full",
-              isExpanded ? "bg-white/20" : "bg-eletro-orange text-white"
-            )}>
-              {activeFilterCount}
-            </span>
-          )}
-        </motion.button>
-
-        {/* Compact Count Badge with Loading */}
-        {!isExpanded && (
-          <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-xl shadow-lg px-4 py-2">
-            <div className="flex items-center gap-2">
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 text-eletro-orange animate-spin" />
-                  <span className="font-bold text-eletro-orange">{Math.round(loadingProgress)}%</span>
-                </>
-              ) : (
-                <>
-                  <MapPin className="w-4 h-4 text-eletro-orange" />
-                  <span className="font-bold text-eletro-orange">{filteredCount.toLocaleString()}</span>
-                </>
-              )}
-              <span className="text-sm text-gray-500 dark:text-gray-400">pontos</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Expanded Filter Panel */}
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute top-16 left-4 right-4 z-[500] bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-xl shadow-lg p-4"
-          >
-            {/* Loading Progress Bar */}
-            {isLoading && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>Carregando marcadores...</span>
-                  <span>{Math.round(loadingProgress)}%</span>
-                </div>
-                <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-eletro-orange"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${loadingProgress}%` }}
-                    transition={{ duration: 0.2 }}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Modelo de Abrigo Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-                    filters.shelterModel.length > 0
-                      ? "border-eletro-orange bg-orange-50 dark:bg-orange-900/20 text-eletro-orange"
-                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
-                  )}
-                >
-                  <Box className="w-4 h-4" />
-                  <span>Modelo</span>
-                  {filters.shelterModel.length > 0 && (
-                    <span className="px-1.5 py-0.5 bg-eletro-orange text-white text-xs rounded-full">
-                      {filters.shelterModel.length}
-                    </span>
-                  )}
-                </button>
-
-                <AnimatePresence>
-                  {showModelDropdown && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      className="absolute top-full left-0 mt-2 w-64 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-[600]"
-                    >
-                      <div className="p-2">
-                        {shelterModelOptions.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-gray-400">Nenhum modelo disponível</div>
-                        ) : (
-                          shelterModelOptions.map(option => (
-                            <button
-                              key={option.value}
-                              onClick={() => handleModelToggle(option.value)}
-                              className={cn(
-                                "w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors",
-                                filters.shelterModel.includes(option.value)
-                                  ? "bg-orange-50 dark:bg-orange-900/30 text-eletro-orange"
-                                  : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                              )}
-                            >
-                              <span className="truncate">{option.value}</span>
-                              <span className="text-xs text-gray-400 ml-2">{option.count}</span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Panel Type Buttons */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handlePanelTypeToggle('digital')}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-                    filters.panelType.includes('digital')
-                      ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
-                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
-                  )}
-                >
-                  <Smartphone className="w-4 h-4" />
-                  <span>Digital</span>
-                </button>
-
-                <button
-                  onClick={() => handlePanelTypeToggle('static')}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-                    filters.panelType.includes('static')
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
-                  )}
-                >
-                  <Box className="w-4 h-4" />
-                  <span>Estático</span>
-                </button>
-              </div>
-
-              {/* Has Photo Toggle */}
-              <button
-                onClick={() => onFilterChange({ ...filters, hasPhoto: !filters.hasPhoto })}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-                  filters.hasPhoto
-                    ? "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
-                    : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
-                )}
-              >
-<Camera className="w-4 h-4" />
-                <span>Com Foto</span>
-              </button>
-
-              {/* Clear Filters */}
-              {activeFilterCount > 0 && (
-                <button
-                  onClick={clearFilters}
-                  className="flex items-center gap-1 px-2 py-2 text-sm text-gray-500 hover:text-red-500 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                  <span>Limpar</span>
-                </button>
-              )}
-
-              {/* Spacer */}
-              <div className="flex-1" />
-
-              {/* Count Badge */}
-              <div className="text-right">
-                <div className="text-lg font-bold text-eletro-orange">
-                  {isLoading ? `${Math.round(loadingProgress)}%` : filteredCount.toLocaleString()}
-                </div>
-                <div className="text-xs text-gray-500">de {totalCount.toLocaleString()}</div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Click outside to close dropdown */}
-      {showModelDropdown && (
-        <div
-          className="fixed inset-0 z-[400]"
-          onClick={() => setShowModelDropdown(false)}
-        />
-      )}
-    </>
   );
 };
 
@@ -657,26 +442,37 @@ OptimizedMarker.displayName = 'OptimizedMarker';
 // ============================================
 // MapView - Main Component (Simplified Architecture)
 // ============================================
+
+// Filter interface matching App.tsx filters structure (subset for map)
+interface MapFilters {
+  shelterModel: string[];
+  panelType: string[];
+  hasPhoto: boolean;
+}
+
 interface MapViewProps {
   equipment: MergedEquipment[];
   onSelectEquipment: (item: MergedEquipment) => void;
   isLoading?: boolean;
+  // Filters now controlled by App.tsx via FilterBar
+  filters: MapFilters;
+  // Expose loading/progress state for external display
+  onLoadingChange?: (isLoading: boolean, progress: number) => void;
 }
 
-const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoading: externalLoading }) => {
+const MapView: React.FC<MapViewProps> = ({ 
+  equipment, 
+  onSelectEquipment, 
+  isLoading: externalLoading,
+  filters,
+  onLoadingChange,
+}) => {
   const isDark = useIsDark();
   const containerRef = useRef<HTMLDivElement>(null);
   const [mapKey, setMapKey] = useState(0);
   const [containerHeight, setContainerHeight] = useState<string>('calc(100vh - 200px)');
   
-  // Filters state - loaded from cache asynchronously
-  const [mapFilters, setMapFilters] = useState<MapFiltersState>({
-    shelterModel: [],
-    panelType: [],
-    hasPhoto: false,
-  });
-  
-  // View state - loaded from cache asynchronously
+  // View state - loaded from cache asynchronously (keep view state caching)
   const [initialViewState, setInitialViewState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   
   // Cache initialization state
@@ -693,25 +489,20 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   // Tile loading state
   const [isTilesLoading, setIsTilesLoading] = useState(false);
   
-  // Debounce filters to prevent rapid re-renders
-  const debouncedFilters = useDebounce(mapFilters, 150);
+  // Debounce external filters to prevent rapid re-renders during filter changes
+  const debouncedFilters = useDebounce(filters, 150);
   
-  // Load cached state on mount (async)
+  // Load cached state on mount (async) - only view state and markers, NOT filters
   useEffect(() => {
     const loadCachedState = async () => {
       try {
         await mapDataCache.init();
         
-        // Load filters, view state, and markers in parallel
-        const [filters, viewState, markers] = await Promise.all([
-          mapDataCache.getFilters(),
+        // Load view state and markers in parallel (filters come from App.tsx now)
+        const [viewState, markers] = await Promise.all([
           mapDataCache.getViewState(),
           mapDataCache.loadMarkers(),
         ]);
-        
-        if (filters) {
-          setMapFilters(filters);
-        }
         
         if (viewState) {
           setInitialViewState(viewState);
@@ -731,13 +522,6 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
     
     loadCachedState();
   }, []);
-  
-  // Save filters to cache when they change
-  useEffect(() => {
-    if (isCacheLoaded) {
-      mapDataCache.saveFilters(debouncedFilters);
-    }
-  }, [debouncedFilters, isCacheLoaded]);
 
   // Calculate container height to avoid overlapping header
   useEffect(() => {
@@ -766,20 +550,6 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
     }, 50);
     return () => clearTimeout(timer);
   }, []);
-
-  // Calculate shelter model options from equipment (memoized)
-  const shelterModelOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    equipment.forEach(item => {
-      const model = item["Modelo de Abrigo"];
-      if (model && model !== '-' && model !== 'N/A') {
-        counts.set(model, (counts.get(model) || 0) + 1);
-      }
-    });
-    return Array.from(counts.entries())
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [equipment]);
 
   // Generate equipment hash for cache validation
   const equipmentHash = useMemo(() => {
@@ -961,6 +731,11 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
     };
   }, [filteredMarkersData, cachedMarkersData, equipmentWithCoords.length]);
 
+  // Notify parent about loading state changes
+  useEffect(() => {
+    onLoadingChange?.(isProcessing, loadingProgress);
+  }, [isProcessing, loadingProgress, onLoadingChange]);
+
   // Handle marker click
   const handleMarkerClick = useCallback((item: MergedEquipment) => {
     onSelectEquipment(item);
@@ -969,8 +744,8 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   if (externalLoading) {
     return (
       <div 
-        className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center"
-        style={{ height: containerHeight, minHeight: '400px' }}
+        className="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center"
+        style={{ minHeight: '400px' }}
       >
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-eletro-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
@@ -983,20 +758,8 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
   return (
     <div 
       ref={containerRef}
-      className="relative w-full rounded-xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-700 isolate"
-      style={{ height: containerHeight, minHeight: '400px', maxHeight: 'calc(100vh - 180px)' }}
+      className="relative w-full h-full rounded-xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-700 isolate"
     >
-      {/* Filter Bar */}
-      <MapFilterBar
-        filters={mapFilters}
-        onFilterChange={setMapFilters}
-        shelterModelOptions={shelterModelOptions}
-        totalCount={equipmentWithCoords.length}
-        filteredCount={filteredMarkersData.length}
-        loadingProgress={loadingProgress}
-        isLoading={isProcessing}
-      />
-
       {/* Tile Loading Indicator - Top Right */}
       <AnimatePresence>
         {isTilesLoading && (
@@ -1011,6 +774,24 @@ const MapView: React.FC<MapViewProps> = ({ equipment, onSelectEquipment, isLoadi
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Map Stats Indicator - Top Left */}
+      <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-xl shadow-lg px-4 py-2">
+        <div className="flex items-center gap-2">
+          {isProcessing ? (
+            <>
+              <Loader2 className="w-4 h-4 text-eletro-orange animate-spin" />
+              <span className="font-bold text-eletro-orange">{Math.round(loadingProgress)}%</span>
+            </>
+          ) : (
+            <>
+              <MapPin className="w-4 h-4 text-eletro-orange" />
+              <span className="font-bold text-eletro-orange">{filteredMarkersData.length.toLocaleString()}</span>
+            </>
+          )}
+          <span className="text-sm text-gray-500 dark:text-gray-400">pontos</span>
+        </div>
+      </div>
 
       {/* Map Container */}
       <MapContainer

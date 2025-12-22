@@ -130,29 +130,39 @@ const FilterBar: React.FC<FilterBarProps> = ({
     };
 
     // Memoize computed values to prevent recreation on every render
-    const hasActiveFilters = useMemo(() =>
-        filters.workArea.length > 0 ||
-        filters.neighborhood.length > 0 ||
-        filters.shelterModel.length > 0 ||
-        filters.riskArea.length > 0 ||
-        filters.panelType.length > 0 ||
-        filters.hasPhoto ||
-        featureFilters.length > 0,
-    [filters, featureFilters]);
+    // On map tab, only consider map-relevant filters (shelterModel, panelType, hasPhoto)
+    const hasActiveFilters = useMemo(() => {
+        if (activeTab === 'map') {
+            return filters.shelterModel.length > 0 ||
+                filters.panelType.length > 0 ||
+                filters.hasPhoto;
+        }
+        return filters.workArea.length > 0 ||
+            filters.neighborhood.length > 0 ||
+            filters.shelterModel.length > 0 ||
+            filters.riskArea.length > 0 ||
+            filters.panelType.length > 0 ||
+            filters.hasPhoto ||
+            featureFilters.length > 0;
+    }, [filters, featureFilters, activeTab]);
 
-    const activePills = useMemo(() => [
-        ...filters.workArea.map(v => ({ key: 'workArea', label: v, value: v })),
-        ...filters.neighborhood.map(v => ({ key: 'neighborhood', label: v, value: v })),
-        ...filters.shelterModel.map(v => ({ key: 'shelterModel', label: v, value: v })),
-        ...filters.riskArea.map(v => ({ key: 'riskArea', label: v, value: v })),
-        ...filters.panelType.map(t => ({ 
-            key: 'panelType', 
-            value: t,
-            label: t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis' 
-        })),
-        ...(filters.hasPhoto ? [{ key: 'hasPhoto', label: 'Com Foto', value: true }] : []),
-        ...featureFilters.map(f => ({ key: 'feature', label: f, value: f }))
-    ], [filters, featureFilters]);
+    const activePills = useMemo(() => {
+        const pills = [
+            // Only include non-map filters if not on map tab
+            ...(activeTab !== 'map' ? filters.workArea.map(v => ({ key: 'workArea', label: v, value: v })) : []),
+            ...(activeTab !== 'map' ? filters.neighborhood.map(v => ({ key: 'neighborhood', label: v, value: v })) : []),
+            ...filters.shelterModel.map(v => ({ key: 'shelterModel', label: v, value: v })),
+            ...(activeTab !== 'map' ? filters.riskArea.map(v => ({ key: 'riskArea', label: v, value: v })) : []),
+            ...filters.panelType.map(t => ({ 
+                key: 'panelType', 
+                value: t,
+                label: t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis' 
+            })),
+            ...(filters.hasPhoto ? [{ key: 'hasPhoto', label: 'Com Foto', value: true }] : []),
+            ...(activeTab !== 'map' ? featureFilters.map(f => ({ key: 'feature', label: f, value: f })) : [])
+        ];
+        return pills;
+    }, [filters, featureFilters, activeTab]);
 
     const activeCount = activePills.length;
 
@@ -351,21 +361,29 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                         className="overflow-hidden"
                     >
-                        <div className={`grid gap-3 ${mobileView ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6'}`}>
-                            <MultiSelectDropdown
-                                label="Área de Trabalho"
-                                icon={<MapPin className="h-4 w-4" />}
-                                options={options.workAreas}
-                                selected={filters.workArea}
-                                onChange={(val) => onFilterChange('workArea', val)}
-                            />
-                            <MultiSelectDropdown
-                                label="Bairro"
-                                icon={<Home className="h-4 w-4" />}
-                                options={options.neighborhoods}
-                                selected={filters.neighborhood}
-                                onChange={(val) => onFilterChange('neighborhood', val)}
-                            />
+                        {/* Map tab: show only 3 filters; Other tabs: show all 6 filters */}
+                        <div className={`grid gap-3 ${mobileView ? 'grid-cols-1' : activeTab === 'map' ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6'}`}>
+                            {/* Área de Trabalho - hidden on map */}
+                            {activeTab !== 'map' && (
+                                <MultiSelectDropdown
+                                    label="Área de Trabalho"
+                                    icon={<MapPin className="h-4 w-4" />}
+                                    options={options.workAreas}
+                                    selected={filters.workArea}
+                                    onChange={(val) => onFilterChange('workArea', val)}
+                                />
+                            )}
+                            {/* Bairro - hidden on map */}
+                            {activeTab !== 'map' && (
+                                <MultiSelectDropdown
+                                    label="Bairro"
+                                    icon={<Home className="h-4 w-4" />}
+                                    options={options.neighborhoods}
+                                    selected={filters.neighborhood}
+                                    onChange={(val) => onFilterChange('neighborhood', val)}
+                                />
+                            )}
+                            {/* Modelo - always visible */}
                             <MultiSelectDropdown
                                 label="Modelo"
                                 icon={<Home className="h-4 w-4" />}
@@ -373,13 +391,17 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 selected={filters.shelterModel}
                                 onChange={(val) => onFilterChange('shelterModel', val)}
                             />
-                            <MultiSelectDropdown
-                                label="Risco"
-                                icon={<AlertTriangle className="h-4 w-4" />}
-                                options={options.riskAreas}
-                                selected={filters.riskArea}
-                                onChange={(val) => onFilterChange('riskArea', val)}
-                            />
+                            {/* Risco - hidden on map */}
+                            {activeTab !== 'map' && (
+                                <MultiSelectDropdown
+                                    label="Risco"
+                                    icon={<AlertTriangle className="h-4 w-4" />}
+                                    options={options.riskAreas}
+                                    selected={filters.riskArea}
+                                    onChange={(val) => onFilterChange('riskArea', val)}
+                                />
+                            )}
+                            {/* Painéis - always visible */}
                             <MultiSelectDropdown
                                 label="Painéis"
                                 icon={<PanelTop className="h-4 w-4" />}
@@ -391,6 +413,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                     v === 'Painel Digital' ? 'digital' : v === 'Painel Estático' ? 'static' : 'none'
                                 ))}
                             />
+                            {/* Com Foto - always visible */}
                             <button
                                 onClick={() => onFilterChange('hasPhoto', !filters.hasPhoto)}
                                 className={`flex items-center justify-center px-4 py-2 border rounded-md text-sm font-medium transition-colors ${filters.hasPhoto

@@ -15,15 +15,38 @@ import { Dashboard } from './components/dashboard';
 import { SearchIcon, AlertIcon, SpinnerIcon } from './components/Icons';
 import AnimatedPlaceholder from './components/AnimatedPlaceholder';
 import { SkeletonCard } from './components/ui/Skeleton';
+import SearchResultsStack from './components/SearchResultsStack';
 import { useDarkMode } from './hooks/useDarkMode';
+import { useSearchResults } from './hooks/useSearchResults';
+import { MapNavigationProvider, useMapNavigation } from './contexts/MapNavigationContext';
 import desktopLogo from './assets/Eletromidia Horizontal (3).png';
 import mobileLogo from './assets/LOGOELETRO.png';
 
 import { useToast } from './contexts/ToastContext';
 
+// Component to handle map reset when search is cleared (must be inside MapNavigationProvider)
+const MapResetHandler: React.FC<{ query: string; activeTab: TabType; previousQuery: string }> = ({ 
+  query, 
+  activeTab,
+  previousQuery 
+}) => {
+  const mapNav = useMapNavigation();
+  
+  // Reset view when search is cleared on map tab
+  useEffect(() => {
+    // Only trigger reset if we're on map tab and query was cleared (had content before, now empty)
+    if (activeTab === 'map' && previousQuery.trim().length >= 2 && query.trim() === '') {
+      mapNav.resetView();
+    }
+  }, [query, activeTab, previousQuery, mapNav]);
+  
+  return null;
+};
+
 function App() {
   const { showFilterToast } = useToast();
   const [query, setQuery] = useState('');
+  const [previousQuery, setPreviousQuery] = useState('');
   const [data, setData] = useState<MergedEquipment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +95,37 @@ function App() {
   // Hidden feature filters - only accessible via FeaturesChart clicks
   // Maps feature display names to their selected state
   const [featureFilters, setFeatureFilters] = useState<string[]>([]);
+
+  // Search Results Stack visibility (for Map tab)
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  // Use the search results hook for the Map tab search stack
+  // maxResults: 15 to support expansion from 7 to 15 results in SearchResultsStack
+  // debounceMs: 30 for near-instant results display
+  const searchResults = useSearchResults({
+    query,
+    data: fullDataCache,
+    maxResults: 15,
+    minQueryLength: 2,
+    debounceMs: 30,
+  });
+
+  // Show search results when there are results and we're on map tab with a query
+  useEffect(() => {
+    if (activeTab === 'map' && searchResults.hasResults && query.trim().length >= 2) {
+      setShowSearchResults(true);
+    } else if (query.trim().length < 2) {
+      setShowSearchResults(false);
+    }
+  }, [activeTab, searchResults.hasResults, query]);
+
+  // Track previous query for reset detection
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPreviousQuery(query);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   /**
    * Sync main layer data from API to IndexedDB cache.
@@ -809,8 +863,27 @@ function App() {
   // Determine if we should show Load More button:
   const showLoadMore = !loading && !error && visibleCount < filteredAndSortedData.length;
 
+  // Prevent scroll on Map tab - map should fill the viewport
+  useEffect(() => {
+    if (activeTab === 'map') {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [activeTab]);
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
+    <MapNavigationProvider>
+    {/* Map Reset Handler - resets view when search is cleared */}
+    <MapResetHandler query={query} activeTab={activeTab} previousQuery={previousQuery} />
+    <div className={`min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300 ${activeTab === 'map' ? 'h-screen overflow-hidden' : 'pb-20'}`}>
 
       {/* Sticky Header & Search */}
       <div className="sticky top-0 z-30 bg-white/90 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 shadow-sm">
@@ -840,6 +913,12 @@ function App() {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => {
+                    // Re-show search results on focus if there's a valid query with results
+                    if (activeTab === 'map' && query.trim().length >= 2 && searchResults.hasResults) {
+                      setShowSearchResults(true);
+                    }
+                  }}
                   placeholder=""
                   className="w-full bg-gray-100 dark:bg-gray-800 border-2 border-transparent focus:bg-white dark:focus:bg-gray-700 focus:border-eletro-orange rounded-full py-3 pl-12 pr-4 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-all duration-300 shadow-inner"
                 />
@@ -853,6 +932,20 @@ function App() {
                   <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
                     <SpinnerIcon className="text-eletro-orange w-5 h-5" />
                   </div>
+                )}
+
+                {/* Search Results Stack - Only visible on Map tab */}
+                {activeTab === 'map' && (
+                  <SearchResultsStack
+                    results={searchResults.results}
+                    activeTab={activeTab}
+                    onSelectEquipment={handleCardClick}
+                    onClose={() => setShowSearchResults(false)}
+                    isVisible={showSearchResults}
+                    isLoading={searchResults.isLoading}
+                    totalMatches={searchResults.totalMatches}
+                    query={searchResults.query}
+                  />
                 )}
               </div>
 
@@ -885,26 +978,40 @@ function App() {
         </div>
       </div>
 
-      {/* Filter Bar - Hidden on map view since it has its own filters */}
-      {activeTab !== 'map' && (
-        <FilterBar
-          isOpen={isFilterOpen}
-          onClose={() => setIsFilterOpen(false)}
-          filters={filters}
-          sort={sort}
-          options={filterOptions}
-          onFilterChange={handleFilterChange}
-          onSortChange={handleSortChange}
-          onClearFilters={clearFilters}
-          featureFilters={featureFilters}
-          onFeatureFilterChange={handleFeatureFilterChange}
-          activeTab={activeTab}
-        />
+      {/* Filter Bar - Now shown on all tabs including map */}
+      <FilterBar
+        isOpen={isFilterOpen}
+        onClose={() => setIsFilterOpen(false)}
+        filters={filters}
+        sort={sort}
+        options={filterOptions}
+        onFilterChange={handleFilterChange}
+        onSortChange={handleSortChange}
+        onClearFilters={clearFilters}
+        featureFilters={featureFilters}
+        onFeatureFilterChange={handleFeatureFilterChange}
+        activeTab={activeTab}
+      />
+
+
+      {/* Map View Tab Content - Full width outside main container for full screen effect */}
+      {activeTab === 'map' && (
+        <div className="px-4 sm:px-6 lg:px-8 py-4 flex-1" style={{ height: 'calc(100vh - 140px)' }}>
+          <MapView
+            equipment={fullDataCache}
+            onSelectEquipment={handleCardClick}
+            isLoading={loading && data.length === 0}
+            filters={{
+              shelterModel: filters.shelterModel,
+              panelType: filters.panelType,
+              hasPhoto: filters.hasPhoto,
+            }}
+          />
+        </div>
       )}
 
-
       {/* Main Content - Conditional rendering to avoid unnecessary re-renders */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${activeTab === 'map' ? 'hidden' : ''}`}>
         {/* Dashboard Tab Content - Only rendered when active */}
         {activeTab === 'dashboard' && (
           <Dashboard
@@ -915,15 +1022,6 @@ function App() {
             onPanelFilterChange={handlePanelFilterChange}
             featureFilters={featureFilters}
             onFeatureFilterChange={handleFeatureFilterChange}
-          />
-        )}
-
-        {/* Map View Tab Content - Only rendered when active */}
-        {activeTab === 'map' && (
-          <MapView
-            equipment={fullDataCache}
-            onSelectEquipment={handleCardClick}
-            isLoading={loading && data.length === 0}
           />
         )}
 
@@ -1012,6 +1110,7 @@ function App() {
       />
 
     </div>
+    </MapNavigationProvider>
   );
 }
 
