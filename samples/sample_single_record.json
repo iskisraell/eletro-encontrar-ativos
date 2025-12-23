@@ -1,1 +1,60 @@
-﻿{"status":"success","meta":{"apiVersion":"5.0.0","layer":"main","count":1,"total":22038,"cached":false,"cacheExpires":"2025-12-16T13:23:31.473Z","executionTimeMs":779},"links":{"self":"?start=0&limit=1","next":"?start=1&limit=1","first":"?start=0&limit=1","last":"?start=22037&limit=1"},"count":1,"total":22038,"data":[{"Nº Eletro":"A08802","Nº Parada":480014794,"Identificador do Local":"","Ponto":"ABRIGOS CSP","Área de Trabalho":"Zona Oeste - SP","Endereço":"PRAÇA DOUTOR CIPRIANO DE MORAES, SN","Bairro":"LAPA","Cidade":"SÃO PAULO","Estado":"SP","Praça":"SP","Tipo de Equipamento":"","Tipo de Estabelecimento":"Abrigos São Paulo - Abrigos [Sem Publicidade] [383]","Latitude":-23.537233,"Longitude":-46.707552,"Status":"Ativo","Data Cadastro":"29/08/2025 19:18:12","Filial":"Matriz","Área de Risco":"-","Modelo de Abrigo":"-","Tipo de Adesivo":"-","Tipo de Piso":"-","Energizado":"-","Luminária":"-","Abrigo Amigo":"-","Wi-Fi":"-","Câmera":"-","Altura do Totem":"-","Painel Digital":"-","Painel Digital - Tipo":"-","Painel Digital - Posição":"-","Painel Estático":"-","Painel Estático - Tipo":"-","Painel Estático - Posição":"-","Link Operações":"https://operacoes.eletromidia.com.br/places/64720","Foto Referência":"","Observações":""}]}
+{
+  "status": "success",
+  "meta": {
+    "apiVersion": "5.2.0",
+    "layer": "main",
+    "count": 1,
+    "total": 22038,
+    "cached": false,
+    "cacheExpires": "2025-12-23T15:15:13.094Z",
+    "executionTimeMs": 3114
+  },
+  "links": {
+    "self": "?start=0&limit=1",
+    "next": "?start=1&limit=1",
+    "first": "?start=0&limit=1",
+    "last": "?start=22037&limit=1"
+  },
+  "count": 1,
+  "total": 22038,
+  "data": [
+    {
+      "Nº Eletro": "A08802",
+      "Nº Parada": 480014794,
+      "Identificador do Local": "",
+      "Ponto": "ABRIGOS CSP",
+      "Área de Trabalho": "Zona Oeste - SP",
+      "Endereço": "PRAÇA DOUTOR CIPRIANO DE MORAES, SN",
+      "Bairro": "LAPA",
+      "Cidade": "SÃO PAULO",
+      "Estado": "SP",
+      "Praça": "SP",
+      "Tipo de Equipamento": "",
+      "Tipo de Estabelecimento": "Abrigos São Paulo - Abrigos [Sem Publicidade] [383]",
+      "Latitude": -23.537233,
+      "Longitude": -46.707552,
+      "Status": "Ativo",
+      "Data Cadastro": "29/08/2025 19:18:12",
+      "Filial": "Matriz",
+      "Área de Risco": "-",
+      "Modelo de Abrigo": "-",
+      "Tipo de Adesivo": "-",
+      "Tipo de Piso": "-",
+      "Energizado": "-",
+      "Luminária": "-",
+      "Abrigo Amigo": "-",
+      "Wi-Fi": "-",
+      "Câmera": "-",
+      "Altura do Totem": "-",
+      "Painel Digital": "-",
+      "Painel Digital - Tipo": "-",
+      "Painel Digital - Posição": "-",
+      "Painel Estático": "-",
+      "Painel Estático - Tipo": "-",
+      "Painel Estático - Posição": "-",
+      "Link Operações": "https://operacoes.eletromidia.com.br/places/64720",
+      "Foto Referência": "",
+      "Observações": ""
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronDown, PanelTop } from 'lucide-react';
+import { Filter, SortAsc, SortDesc, X, Check, Image, MapPin, Home, AlertTriangle, ChevronDown, PanelTop, Heart } from 'lucide-react';
 import MultiSelectDropdown from './MultiSelectDropdown';
 
 interface FilterBarProps {
@@ -13,6 +13,7 @@ interface FilterBarProps {
         riskArea: string[];
         hasPhoto: boolean;
         panelType: string[];
+        abrigoAmigo: string[];
     };
     sort: {
         field: string;
@@ -24,6 +25,7 @@ interface FilterBarProps {
         shelterModels: { value: string; count: number }[];
         riskAreas: { value: string; count: number }[];
         panelTypes: { value: string; count: number; key: string }[];
+        abrigoAmigoClients: { value: string; count: number; key: string }[];
     };
     onFilterChange: (key: string, value: any) => void;
     onSortChange: (field: string) => void;
@@ -130,11 +132,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
     };
 
     // Memoize computed values to prevent recreation on every render
-    // On map tab, only consider map-relevant filters (shelterModel, panelType, hasPhoto)
+    // On map tab, only consider map-relevant filters (shelterModel, panelType, hasPhoto, abrigoAmigo)
     const hasActiveFilters = useMemo(() => {
         if (activeTab === 'map') {
             return filters.shelterModel.length > 0 ||
                 filters.panelType.length > 0 ||
+                filters.abrigoAmigo.length > 0 ||
                 filters.hasPhoto;
         }
         return filters.workArea.length > 0 ||
@@ -142,6 +145,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
             filters.shelterModel.length > 0 ||
             filters.riskArea.length > 0 ||
             filters.panelType.length > 0 ||
+            filters.abrigoAmigo.length > 0 ||
             filters.hasPhoto ||
             featureFilters.length > 0;
     }, [filters, featureFilters, activeTab]);
@@ -157,6 +161,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 key: 'panelType', 
                 value: t,
                 label: t === 'digital' ? 'Painel Digital' : t === 'static' ? 'Painel Estático' : 'Sem Painéis' 
+            })),
+            ...filters.abrigoAmigo.map(t => ({ 
+                key: 'abrigoAmigo', 
+                value: t,
+                label: t === 'claro' ? 'Abrigo Amigo Claro' : 'Abrigo Amigo Governo'
             })),
             ...(filters.hasPhoto ? [{ key: 'hasPhoto', label: 'Com Foto', value: true }] : []),
             ...(activeTab !== 'map' ? featureFilters.map(f => ({ key: 'feature', label: f, value: f })) : [])
@@ -413,6 +422,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                     v === 'Painel Digital' ? 'digital' : v === 'Painel Estático' ? 'static' : 'none'
                                 ))}
                             />
+                            {/* Abrigo Amigo - always visible with Todos/Nenhum helper */}
+                            <MultiSelectDropdown
+                                label="Abrigo Amigo"
+                                icon={<Heart className="h-4 w-4" />}
+                                options={options.abrigoAmigoClients}
+                                selected={filters.abrigoAmigo.map(t => 
+                                    t === 'claro' ? 'Claro' : 'Governo'
+                                )}
+                                onChange={(val) => onFilterChange('abrigoAmigo', val.map(v =>
+                                    v === 'Claro' ? 'claro' : 'governo'
+                                ))}
+                            />
                             {/* Com Foto - always visible */}
                             <button
                                 onClick={() => onFilterChange('hasPhoto', !filters.hasPhoto)}
@@ -500,10 +521,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         {/* Divider */}
                         <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
 
-                        {/* Inline Filters - All 3 in a row */}
+                        {/* Inline Filters - All 4 in a row */}
                         <div className="flex items-center gap-3 flex-1">
                             {/* Modelo */}
-                            <div className="w-48">
+                            <div className="w-44">
                                 <MultiSelectDropdown
                                     label="Modelo"
                                     icon={<Home className="h-4 w-4" />}
@@ -513,7 +534,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                 />
                             </div>
                             {/* Painéis */}
-                            <div className="w-48">
+                            <div className="w-44">
                                 <MultiSelectDropdown
                                     label="Painéis"
                                     icon={<PanelTop className="h-4 w-4" />}
@@ -523,6 +544,20 @@ const FilterBar: React.FC<FilterBarProps> = ({
                                     )}
                                     onChange={(val) => onFilterChange('panelType', val.map(v =>
                                         v === 'Painel Digital' ? 'digital' : v === 'Painel Estático' ? 'static' : 'none'
+                                    ))}
+                                />
+                            </div>
+                            {/* Abrigo Amigo */}
+                            <div className="w-44">
+                                <MultiSelectDropdown
+                                    label="Abrigo Amigo"
+                                    icon={<Heart className="h-4 w-4" />}
+                                    options={options.abrigoAmigoClients}
+                                    selected={filters.abrigoAmigo.map(t => 
+                                        t === 'claro' ? 'Claro' : 'Governo'
+                                    )}
+                                    onChange={(val) => onFilterChange('abrigoAmigo', val.map(v =>
+                                        v === 'Claro' ? 'claro' : 'governo'
                                     ))}
                                 />
                             </div>

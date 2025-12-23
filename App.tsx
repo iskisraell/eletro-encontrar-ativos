@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { fetchEquipment, fetchPanelsLayer, fetchMainLayer } from './services/api';
+import { fetchEquipment, fetchPanelsLayer, fetchMainLayer, fetchAbrigoAmigoLayer } from './services/api';
 import { layerCache } from './services/layerCache';
 import { mapDataCache, MapMarkerData } from './services/mapDataCache';
-import { stackLayers, createPanelsMap } from './services/layerStacker';
-import { Equipment, MergedEquipment, PanelLayerRecord } from './types';
+import { stackLayers, createPanelsMap, createAbrigoAmigoMap } from './services/layerStacker';
+import { Equipment, MergedEquipment, PanelLayerRecord, AbrigoAmigoRecord } from './types';
 import { isAbrigo } from './schemas/equipment';
 import EquipmentCard from './components/EquipmentCard';
 import DetailPanel from './components/DetailPanel';
@@ -56,6 +56,7 @@ function App() {
   // Layer-based caching state
   const [fullDataCache, setFullDataCache] = useState<MergedEquipment[]>([]);
   const [panelsCache, setPanelsCache] = useState<Map<string, PanelLayerRecord>>(new Map());
+  const [abrigoAmigoCache, setAbrigoAmigoCache] = useState<Map<string, AbrigoAmigoRecord>>(new Map());
   const [isCacheReady, setIsCacheReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -85,6 +86,7 @@ function App() {
     riskArea: [] as string[],
     hasPhoto: false,
     panelType: [] as string[], // 'digital', 'static', 'none'
+    abrigoAmigo: [] as string[], // 'claro', 'governo'
   });
 
   const [sort, setSort] = useState({
@@ -245,15 +247,79 @@ function App() {
   };
 
   /**
-   * Merge main data with panels data and update state.
+   * Sync Abrigo Amigo layer data from API to IndexedDB cache.
+   * Fetches partner information and tracks client distribution.
+   * Now updates sync progress for the DataSyncIndicator with stats.
    */
-  const mergeAndUpdateData = (mainData: Equipment[], panelsData: PanelLayerRecord[]) => {
-    const merged = stackLayers(mainData, panelsData);
+  const syncAbrigoAmigoLayer = async (): Promise<AbrigoAmigoRecord[]> => {
+    let currentOffset = 0;
+    const chunkSize = 5000;
+    const abrigoAmigoMap = new Map<string, AbrigoAmigoRecord>();
+    let claroCount = 0;
+    let governoCount = 0;
+
+    try {
+      // First, get total count
+      const { total: totalRecords } = await fetchAbrigoAmigoLayer({ start: 0, limit: 1 });
+      
+      // Update progress to abrigo amigo phase
+      setSyncProgress({
+        current: 0,
+        total: totalRecords,
+        phase: 'syncing_abrigoamigo',
+        abrigoAmigoStats: { claro: 0, governo: 0 }
+      });
+
+      while (currentOffset < totalRecords) {
+        const { data: chunk } = await fetchAbrigoAmigoLayer({ start: currentOffset, limit: chunkSize });
+        if (chunk.length === 0) break;
+
+        // Save to cache
+        await layerCache.saveAbrigoAmigoChunk(chunk);
+
+        // Update map and count clients
+        chunk.forEach(record => {
+          if (record["Nº Parada"] && record.enabled) {
+            abrigoAmigoMap.set(String(record["Nº Parada"]), record);
+            const cliente = record.cliente?.toLowerCase().trim();
+            if (cliente === 'claro') claroCount++;
+            else if (cliente === 'governo') governoCount++;
+          }
+        });
+
+        currentOffset += chunkSize;
+        
+        // Update progress with client stats
+        setSyncProgress({
+          current: Math.min(currentOffset, totalRecords),
+          total: totalRecords,
+          phase: 'syncing_abrigoamigo',
+          abrigoAmigoStats: { claro: claroCount, governo: governoCount }
+        });
+      }
+
+      // Update timestamp
+      await layerCache.setLayerTimestamp('abrigoamigo', Date.now());
+
+      return Array.from(abrigoAmigoMap.values());
+    } catch (e) {
+      console.error("Abrigo Amigo layer sync failed", e);
+      throw e;
+    }
+  };
+
+  /**
+   * Merge main data with panels data and Abrigo Amigo data, and update state.
+   */
+  const mergeAndUpdateData = (mainData: Equipment[], panelsData: PanelLayerRecord[], abrigoAmigoData: AbrigoAmigoRecord[] = []) => {
+    const merged = stackLayers(mainData, panelsData, abrigoAmigoData);
     const newPanelsMap = createPanelsMap(panelsData);
+    const newAbrigoAmigoMap = createAbrigoAmigoMap(abrigoAmigoData);
     
     setData(merged);
     setFullDataCache(merged);
     setPanelsCache(newPanelsMap);
+    setAbrigoAmigoCache(newAbrigoAmigoMap);
   };
 
   /**
@@ -356,10 +422,11 @@ function App() {
         // Initialize layer cache
         await layerCache.init();
 
-        // Load cached data from both layers
-        const [cachedMain, cachedPanels] = await Promise.all([
+        // Load cached data from all layers
+        const [cachedMain, cachedPanels, cachedAbrigoAmigo] = await Promise.all([
           layerCache.getAllMain(),
-          layerCache.getAllPanels()
+          layerCache.getAllPanels(),
+          layerCache.getAllAbrigoAmigo()
         ]);
 
         // Get API total for comparison (we need this regardless)
@@ -367,7 +434,7 @@ function App() {
 
         // PHASE 1: Show data immediately if we have cache
         if (cachedMain.length > 0) {
-          mergeAndUpdateData(cachedMain, cachedPanels);
+          mergeAndUpdateData(cachedMain, cachedPanels, cachedAbrigoAmigo);
           setIsInitializing(false);
           setLoading(false);
         } else {
@@ -392,25 +459,28 @@ function App() {
         }
 
         // PHASE 2: Check if layers need background syncing
-        const [mainStale, panelsStale] = await Promise.all([
+        const [mainStale, panelsStale, abrigoAmigoStale] = await Promise.all([
           layerCache.isLayerStale('main'),
-          layerCache.isLayerStale('panels')
+          layerCache.isLayerStale('panels'),
+          layerCache.isLayerStale('abrigoamigo')
         ]);
 
         // Determine if we need to sync
         const needsMainSync = mainStale || cachedMain.length < apiTotal;
         const needsPanelsSync = panelsStale || cachedPanels.length === 0;
+        const needsAbrigoAmigoSync = abrigoAmigoStale || cachedAbrigoAmigo.length === 0;
 
-        if (needsMainSync || needsPanelsSync) {
+        if (needsMainSync || needsPanelsSync || needsAbrigoAmigoSync) {
           setIsSyncing(true);
 
-          // Sync main layer first (more critical), then panels
+          // Sync main layer first (more critical), then panels, then Abrigo Amigo
           if (needsMainSync) {
             const finalMain = await syncMainLayer(cachedMain.length, apiTotal);
             
             // Update data with synced main layer
             const currentPanels = await layerCache.getAllPanels();
-            mergeAndUpdateData(finalMain, currentPanels);
+            const currentAbrigoAmigo = await layerCache.getAllAbrigoAmigo();
+            mergeAndUpdateData(finalMain, currentPanels, currentAbrigoAmigo);
           }
 
           if (needsPanelsSync) {
@@ -418,14 +488,25 @@ function App() {
             
             // Update data with synced panels
             const currentMain = await layerCache.getAllMain();
-            mergeAndUpdateData(currentMain, finalPanels);
+            const currentAbrigoAmigo = await layerCache.getAllAbrigoAmigo();
+            mergeAndUpdateData(currentMain, finalPanels, currentAbrigoAmigo);
+          }
+
+          if (needsAbrigoAmigoSync) {
+            const finalAbrigoAmigo = await syncAbrigoAmigoLayer();
+            
+            // Update data with synced Abrigo Amigo
+            const currentMain = await layerCache.getAllMain();
+            const currentPanels = await layerCache.getAllPanels();
+            mergeAndUpdateData(currentMain, currentPanels, finalAbrigoAmigo);
           }
 
           // PHASE 3: Pre-process map data in background
           // Get the final merged data for map preparation
           const finalData = stackLayers(
             await layerCache.getAllMain(),
-            await layerCache.getAllPanels()
+            await layerCache.getAllPanels(),
+            await layerCache.getAllAbrigoAmigo()
           );
           await prepareMapData(finalData);
 
@@ -481,12 +562,15 @@ function App() {
             setError(`Nenhum resultado encontrado para "${query}"`);
           }
         } else {
-          // API Fallback - fetch and merge with panels
+          // API Fallback - fetch and merge with panels and Abrigo Amigo
           try {
             const { data: mainResults } = await fetchEquipment({ q: query });
-            // Try to get panels for these results from cache
-            const panelsData = await layerCache.getAllPanels();
-            const merged = stackLayers(mainResults, panelsData);
+            // Try to get panels and Abrigo Amigo for these results from cache
+            const [panelsData, abrigoAmigoData] = await Promise.all([
+              layerCache.getAllPanels(),
+              layerCache.getAllAbrigoAmigo()
+            ]);
+            const merged = stackLayers(mainResults, panelsData, abrigoAmigoData);
             setData(merged);
             if (merged.length === 0) {
               setError(`Nenhum resultado encontrado para "${query}"`);
@@ -604,12 +688,41 @@ function App() {
       ];
     };
 
+    // Calculate Abrigo Amigo client counts based on other active filters
+    const countAbrigoAmigoClients = () => {
+      const filteredData = getFilteredData('abrigoAmigo');
+      
+      const hasAbrigoAmigo = (item: Equipment | MergedEquipment): boolean =>
+        '_hasAbrigoAmigo' in item &&
+        (item as MergedEquipment)._hasAbrigoAmigo === true &&
+        '_abrigoAmigoData' in item &&
+        (item as MergedEquipment)._abrigoAmigoData !== undefined;
+
+      const claroItems = filteredData.filter(item => {
+        if (!hasAbrigoAmigo(item)) return false;
+        const merged = item as MergedEquipment;
+        return merged._abrigoAmigoData?.cliente?.toLowerCase().trim() === 'claro';
+      });
+      
+      const governoItems = filteredData.filter(item => {
+        if (!hasAbrigoAmigo(item)) return false;
+        const merged = item as MergedEquipment;
+        return merged._abrigoAmigoData?.cliente?.toLowerCase().trim() === 'governo';
+      });
+
+      return [
+        { value: 'Claro', count: claroItems.length, key: 'claro' },
+        { value: 'Governo', count: governoItems.length, key: 'governo' },
+      ];
+    };
+
     return {
       workAreas,
       neighborhoods,
       shelterModels,
       riskAreas,
       panelTypes: countPanelTypes(),
+      abrigoAmigoClients: countAbrigoAmigoClients(),
     };
   }, [data, filters]);
 
@@ -671,6 +784,25 @@ function App() {
             default:
               return false;
           }
+        });
+      });
+    }
+
+    // Abrigo Amigo Filter
+    // Uses OR logic: equipment matches if it has ANY of the selected Abrigo Amigo clients
+    // Uses merged _abrigoAmigoData from layer stacking
+    if (filters.abrigoAmigo.length > 0) {
+      result = result.filter(item => {
+        // Check for merged Abrigo Amigo data
+        const hasAbrigoAmigo = '_hasAbrigoAmigo' in item && item._hasAbrigoAmigo === true && '_abrigoAmigoData' in item;
+        
+        if (!hasAbrigoAmigo) return false;
+        
+        const cliente = item._abrigoAmigoData?.cliente?.toLowerCase().trim();
+        return filters.abrigoAmigo.some(filterValue => {
+          if (filterValue === 'claro') return cliente === 'claro';
+          if (filterValue === 'governo') return cliente === 'governo';
+          return false;
         });
       });
     }
@@ -794,6 +926,7 @@ function App() {
       riskArea: [],
       hasPhoto: false,
       panelType: [],
+      abrigoAmigo: [],
     });
     setSort({ field: '', direction: 'asc' });
     setFeatureFilters([]);

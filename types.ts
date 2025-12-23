@@ -34,6 +34,17 @@ export interface PanelLayerRecord {
   totalPanels: number;
 }
 
+// Abrigo Amigo layer record (from layer=abrigoamigo API response)
+export interface AbrigoAmigoRecord {
+  enabled: boolean;
+  cliente: 'Claro' | 'Governo' | string;
+  paradaOriginal: string;
+  "Nº Parada": string;
+}
+
+// Abrigo Amigo client types for filtering
+export type AbrigoAmigoClient = 'claro' | 'governo';
+
 // API layer types
 export type ApiLayer = 'main' | 'panels' | 'full' | 'summary';
 
@@ -74,13 +85,15 @@ export interface Equipment {
   shelterModel?: string | null;
   // Full layer panel object (when using layer=full)
   panels?: PanelData | null;
-  [key: string]: string | number | boolean | PanelData | PanelLayerRecord | null | undefined; // Allow for other dynamic columns
+  [key: string]: string | number | boolean | PanelData | PanelLayerRecord | AbrigoAmigoRecord | null | undefined; // Allow for other dynamic columns
 }
 
 // Extended Equipment with merged panel layer data
 export interface MergedEquipment extends Equipment {
   _panelData?: PanelLayerRecord;  // Attached panel layer data
   _hasPanelData?: boolean;        // Flag indicating if panels were merged
+  _abrigoAmigoData?: AbrigoAmigoRecord;  // Attached Abrigo Amigo data
+  _hasAbrigoAmigo?: boolean;      // Flag indicating if Abrigo Amigo data was merged
 }
 
 export interface ApiResponse {

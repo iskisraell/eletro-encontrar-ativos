@@ -1,18 +1,19 @@
-import { Equipment, PanelLayerRecord, MergedEquipment } from '../types';
+import { Equipment, PanelLayerRecord, MergedEquipment, AbrigoAmigoRecord } from '../types';
 
 /**
  * Layer Stacker Service
  * 
  * Merges data from multiple API layers into a unified equipment record.
  * Uses "Nº Eletro" as the primary key for matching records across layers.
+ * Uses "Nº Parada" for matching Abrigo Amigo data.
  * 
  * Architecture:
- * ┌─────────────────┐     ┌─────────────────┐
- * │   Main Layer    │     │  Panels Layer   │
- * │  (basic info)   │     │ (panel details) │
- * └────────┬────────┘     └────────┬────────┘
- *          │                       │
- *          └───────────┬───────────┘
+ * ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+ * │   Main Layer    │     │  Panels Layer   │     │ Abrigo Amigo    │
+ * │  (basic info)   │     │ (panel details) │     │   (partner)     │
+ * └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+ *          │                       │                       │
+ *          └───────────┬───────────┴───────────────────────┘
  *                      ▼
  *          ┌───────────────────────┐
  *          │   Merged Equipment    │
@@ -21,21 +22,24 @@ import { Equipment, PanelLayerRecord, MergedEquipment } from '../types';
  */
 
 /**
- * Merges main layer data with panels layer data by "Nº Eletro" key.
+ * Merges main layer data with panels layer data and Abrigo Amigo data.
  * 
- * Performance: O(n + m) time complexity
+ * Performance: O(n + m + k) time complexity
  * - n = main layer records
  * - m = panels layer records
+ * - k = abrigo amigo layer records
  * 
  * @param mainData - Array of equipment records from main layer
  * @param panelsData - Array of panel records from panels layer
- * @returns Array of merged equipment with attached panel data
+ * @param abrigoAmigoData - Array of Abrigo Amigo records (optional)
+ * @returns Array of merged equipment with attached panel and Abrigo Amigo data
  */
 export function stackLayers(
   mainData: Equipment[],
-  panelsData: PanelLayerRecord[]
+  panelsData: PanelLayerRecord[],
+  abrigoAmigoData: AbrigoAmigoRecord[] = []
 ): MergedEquipment[] {
-  // Build panels lookup map for O(1) access
+  // Build panels lookup map for O(1) access by Nº Eletro
   const panelsMap = new Map<string, PanelLayerRecord>();
   
   panelsData.forEach(panel => {
@@ -45,15 +49,30 @@ export function stackLayers(
     }
   });
 
-  // Merge layers by matching "Nº Eletro"
+  // Build Abrigo Amigo lookup map for O(1) access by Nº Parada
+  const abrigoAmigoMap = new Map<string, AbrigoAmigoRecord>();
+  
+  abrigoAmigoData.forEach(record => {
+    const key = record["Nº Parada"];
+    if (key && record.enabled) {
+      abrigoAmigoMap.set(String(key), record);
+    }
+  });
+
+  // Merge layers by matching keys
   return mainData.map(equipment => {
     const eletroId = equipment["Nº Eletro"];
+    const paradaId = equipment["Nº Parada"];
+    
     const panelData = eletroId ? panelsMap.get(eletroId) : undefined;
+    const abrigoAmigoRecord = paradaId ? abrigoAmigoMap.get(String(paradaId)) : undefined;
 
     return {
       ...equipment,
       _panelData: panelData,
-      _hasPanelData: !!panelData
+      _hasPanelData: !!panelData,
+      _abrigoAmigoData: abrigoAmigoRecord,
+      _hasAbrigoAmigo: !!abrigoAmigoRecord
     } as MergedEquipment;
   });
 }
@@ -93,6 +112,28 @@ export function createPanelsMap(
     const key = panel["Nº Eletro"];
     if (key) {
       map.set(key, panel);
+    }
+  });
+  
+  return map;
+}
+
+/**
+ * Creates a lookup map from Abrigo Amigo array for efficient access.
+ * Useful when you need to attach Abrigo Amigo data to multiple items.
+ * 
+ * @param abrigoAmigoData - Array of Abrigo Amigo records
+ * @returns Map keyed by "Nº Parada"
+ */
+export function createAbrigoAmigoMap(
+  abrigoAmigoData: AbrigoAmigoRecord[]
+): Map<string, AbrigoAmigoRecord> {
+  const map = new Map<string, AbrigoAmigoRecord>();
+  
+  abrigoAmigoData.forEach(record => {
+    const key = record["Nº Parada"];
+    if (key && record.enabled) {
+      map.set(String(key), record);
     }
   });
   
@@ -162,6 +203,34 @@ export function hasPanelData(
     '_panelData' in equipment &&
     equipment._panelData !== undefined
   );
+}
+
+/**
+ * Checks if equipment has Abrigo Amigo data attached.
+ * Type guard for TypeScript.
+ */
+export function hasAbrigoAmigoData(
+  equipment: Equipment | MergedEquipment
+): equipment is MergedEquipment & { _abrigoAmigoData: AbrigoAmigoRecord; _hasAbrigoAmigo: true } {
+  return (
+    '_hasAbrigoAmigo' in equipment && 
+    equipment._hasAbrigoAmigo === true &&
+    '_abrigoAmigoData' in equipment &&
+    equipment._abrigoAmigoData !== undefined
+  );
+}
+
+/**
+ * Get Abrigo Amigo client color based on the client type.
+ * @param cliente - Client name (Claro, Governo, etc.)
+ * @returns Hex color code
+ */
+export function getAbrigoAmigoColor(cliente: string): string {
+  const normalized = cliente?.toLowerCase().trim();
+  if (normalized === 'claro') return '#dc3545';
+  if (normalized === 'governo') return '#31b11c';
+  // Default color for unknown clients
+  return '#6b7280';
 }
 
 /**

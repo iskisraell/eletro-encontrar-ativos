@@ -1,0 +1,52 @@
+{
+  "status": "success",
+  "meta": {
+    "apiVersion": "5.2.0",
+    "layer": "abrigoamigo",
+    "count": 5,
+    "total": 305,
+    "cached": false,
+    "cacheExpires": "2025-12-23T15:20:27.025Z",
+    "executionTimeMs": 185
+  },
+  "links": {
+    "self": "?start=0&limit=5",
+    "next": "?start=5&limit=5",
+    "first": "?start=0&limit=5",
+    "last": "?start=300&limit=5"
+  },
+  "count": 5,
+  "total": 305,
+  "data": [
+    {
+      "enabled": true,
+      "cliente": "Claro",
+      "paradaOriginal": "211121",
+      "Nº Parada": "211121"
+    },
+    {
+      "enabled": true,
+      "cliente": "Claro",
+      "paradaOriginal": "910822",
+      "Nº Parada": "910822"
+    },
+    {
+      "enabled": true,
+      "cliente": "Claro",
+      "paradaOriginal": "1206717",
+      "Nº Parada": "1206717"
+    },
+    {
+      "enabled": true,
+      "cliente": "Claro",
+      "paradaOriginal": "1211392",
+      "Nº Parada": "1211392"
+    },
+    {
+      "enabled": true,
+      "cliente": "Claro",
+      "paradaOriginal": "2600694",
+      "Nº Parada": "2600694"
+    }
+  ]
+}

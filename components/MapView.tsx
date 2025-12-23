@@ -18,12 +18,12 @@ import ReactDOM from 'react-dom';
 import { MapContainer, TileLayer, CircleMarker, Popup, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MergedEquipment } from '../types';
+import { MergedEquipment, AbrigoAmigoRecord } from '../types';
 import { useIsDark } from '../hooks/useDarkMode';
 import { 
   MapPin, X, Loader2,
   BusFront, Camera, Smartphone, Frame, 
-  CheckCircle2, XCircle, Eye, Navigation, ExternalLink, Hash
+  CheckCircle2, XCircle, Eye, Navigation, ExternalLink, Hash, Heart
 } from 'lucide-react';
 import { mapDataCache } from '../services/mapDataCache';
 import { useMapNavigationOptional } from '../contexts/MapNavigationContext';
@@ -423,6 +423,21 @@ const SharedPopup: React.FC<SharedPopupProps> = ({
   const hasStatic = hasMergedData && equipment._panelData
     ? equipment._panelData.hasStatic
     : (equipment["Painel Estático - Tipo"] && equipment["Painel Estático - Tipo"] !== "" && equipment["Painel Estático - Tipo"] !== "-");
+  
+  // Check for Abrigo Amigo data
+  const hasAbrigoAmigo = '_hasAbrigoAmigo' in equipment && 
+    equipment._hasAbrigoAmigo === true && 
+    '_abrigoAmigoData' in equipment && 
+    equipment._abrigoAmigoData !== undefined &&
+    equipment._abrigoAmigoData.enabled;
+  
+  // Get Abrigo Amigo badge color based on client
+  const getAbrigoAmigoColor = (cliente: string | undefined): string => {
+    const normalizedClient = cliente?.toLowerCase().trim();
+    if (normalizedClient === 'claro') return '#dc3545'; // Red for Claro
+    if (normalizedClient === 'governo') return '#31b11c'; // Green for Governo
+    return '#6b7280'; // Gray fallback
+  };
 
   // Generate Street View URL
   const streetViewUrl = getStreetViewUrl(position[0], position[1]);
@@ -487,6 +502,15 @@ const SharedPopup: React.FC<SharedPopupProps> = ({
                 <Camera className="w-3 h-3" />
                 Foto
               </button>
+            )}
+            {hasAbrigoAmigo && (
+              <span 
+                className="popup-badge flex items-center gap-1"
+                style={{ backgroundColor: getAbrigoAmigoColor(equipment._abrigoAmigoData?.cliente) }}
+              >
+                <Heart className="w-3 h-3 fill-current" />
+                <span>Abrigo Amigo</span>
+              </span>
             )}
             {hasDigital && (
               <span className="popup-badge popup-badge-digital">

@@ -14,13 +14,18 @@ import { motion, AnimatePresence } from 'framer-motion';
  */
 
 // Sync phase types
-export type SyncPhase = 'initializing' | 'loading' | 'syncing_main' | 'syncing_panels' | 'preparing_map' | 'complete';
+export type SyncPhase = 'initializing' | 'loading' | 'syncing_main' | 'syncing_panels' | 'syncing_abrigoamigo' | 'preparing_map' | 'complete';
 
 // Props for sync progress
 export interface SyncProgress {
   current: number;
   total: number;
   phase: SyncPhase;
+  // Optional: Abrigo Amigo specific stats
+  abrigoAmigoStats?: {
+    claro: number;
+    governo: number;
+  };
 }
 
 // São Paulo bus stop and Eletromidia-themed sync messages
@@ -60,6 +65,16 @@ const SYNC_MESSAGES: Record<SyncPhase, string[]> = {
     "Iluminando a cidade...",
     "Digitalizando pontos de parada...",
   ],
+  syncing_abrigoamigo: [
+    "Sincronizando Abrigos Amigos...",
+    "Conectando parceiros Claro...",
+    "Carregando pontos do Governo...",
+    "Mapeando abrigos especiais...",
+    "Descobrindo parcerias urbanas...",
+    "Atualizando rede de abrigos...",
+    "Sincronizando benefícios...",
+    "Carregando programa Abrigo Amigo...",
+  ],
   preparing_map: [
     "Preparando mapa interativo...",
     "Processando coordenadas GPS...",
@@ -83,6 +98,7 @@ const PHASE_EMOJIS: Record<SyncPhase, string[]> = {
   loading: ["📡", "🚀", "⚡"],
   syncing_main: ["🚌", "🏙️", "🗺️", "🚏", "📍", "🎯", "🏗️", "🌆", "🔄", "📊", "✨", "💡", "🔍", "📱", "🌐"],
   syncing_panels: ["📺", "💡", "✨", "🖥️", "📡", "🎬"],
+  syncing_abrigoamigo: ["🏠", "🤝", "📱", "🏛️", "💚", "❤️", "🎯", "✨"],
   preparing_map: ["🗺️", "📍", "🎯", "🧭", "🌍", "📌", "🔍", "🛰️"],
   complete: ["✅", "🎉", "🚀"],
 };
@@ -191,6 +207,7 @@ const DataSyncIndicator: React.FC<DataSyncIndicatorProps> = ({
       case 'loading': return 'Carregando dados';
       case 'syncing_main': return 'Sincronizando equipamentos';
       case 'syncing_panels': return 'Sincronizando painéis';
+      case 'syncing_abrigoamigo': return 'Sincronizando Abrigos Amigos';
       case 'preparing_map': return 'Preparando mapa';
       case 'complete': return 'Completo';
       default: return 'Sincronizando';
@@ -284,6 +301,44 @@ const DataSyncIndicator: React.FC<DataSyncIndicatorProps> = ({
                     </span>
                   </div>
                 </div>
+              )}
+
+              {/* Abrigo Amigo Stats - Show during syncing_abrigoamigo phase */}
+              {phase === 'syncing_abrigoamigo' && progress?.abrigoAmigoStats && (
+                <motion.div
+                  className="mb-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium uppercase tracking-wide">
+                    Parceiros Abrigo Amigo
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {/* Claro stats */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'rgba(220, 53, 69, 0.1)' }}>
+                      <span 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: '#dc3545' }}
+                      />
+                      <span className="text-sm font-bold" style={{ color: '#dc3545' }}>
+                        {formatNumber(progress.abrigoAmigoStats.claro)}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Claro</span>
+                    </div>
+                    {/* Governo stats */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'rgba(49, 177, 28, 0.1)' }}>
+                      <span 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: '#31b11c' }}
+                      />
+                      <span className="text-sm font-bold" style={{ color: '#31b11c' }}>
+                        {formatNumber(progress.abrigoAmigoStats.governo)}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Governo</span>
+                    </div>
+                  </div>
+                </motion.div>
               )}
 
               {/* Time estimate */}

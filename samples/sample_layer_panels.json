@@ -1,42 +1,85 @@
 {
   "status": "success",
   "meta": {
-    "apiVersion": "5.1.0",
+    "apiVersion": "5.2.0",
     "layer": "panels",
-    "count": 0,
-    "total": 0,
+    "count": 3,
+    "total": 2498,
     "cached": false,
-    "cacheExpires": "2025-12-20T19:04:51.282Z",
-    "executionTimeMs": 1522
+    "cacheExpires": "2025-12-23T15:20:16.897Z",
+    "executionTimeMs": 3087
   },
   "links": {
     "self": "?start=0&limit=3",
+    "next": "?start=3&limit=3",
     "first": "?start=0&limit=3",
-    "last": "?start=0&limit=3"
+    "last": "?start=2496&limit=3"
   },
-  "count": 0,
-  "total": 0,
-  "data": [],
-  "_note": "This layer returns panels data indexed by Nº Eletro. When panel data exists, each record contains the following structure:",
-  "_exampleRecord": {
-    "Nº Eletro": "A01517",
-    "digital": {
-      "boxes": 1,
-      "faces": 1,
-      "position": "90°",
-      "type": "SIMPLES",
-      "brand": "BOE/DD"
+  "count": 3,
+  "total": 2498,
+  "data": [
+    {
+      "digital": {
+        "boxes": 0,
+        "faces": 0,
+        "position": null,
+        "type": null,
+        "brand": null
+      },
+      "static": {
+        "boxes": 2,
+        "faces": 2,
+        "position": "180°",
+        "type": "SIMPLES/SUSPENSO"
+      },
+      "shelterModel": "CAOS LEVE",
+      "observation": null,
+      "hasDigital": false,
+      "hasStatic": true,
+      "totalPanels": 2,
+      "Nº Eletro": "A01516"
     },
-    "static": {
-      "boxes": 1,
-      "faces": 1,
-      "position": "180°",
-      "type": "SIMPLES"
+    {
+      "digital": {
+        "boxes": 1,
+        "faces": 1,
+        "position": "90°",
+        "type": "SIMPLES",
+        "brand": "BOE/DD"
+      },
+      "static": {
+        "boxes": 1,
+        "faces": 1,
+        "position": "180°",
+        "type": "SIMPLES"
+      },
+      "shelterModel": "CAOS LEVE",
+      "observation": null,
+      "hasDigital": true,
+      "hasStatic": true,
+      "totalPanels": 2,
+      "Nº Eletro": "A01517"
     },
-    "shelterModel": "CAOS LEVE",
-    "observation": null,
-    "hasDigital": true,
-    "hasStatic": true,
-    "totalPanels": 2
-  }
+    {
+      "digital": {
+        "boxes": 1,
+        "faces": 1,
+        "position": "45°",
+        "type": "SIMPLES",
+        "brand": "BOE/AA"
+      },
+      "static": {
+        "boxes": 0,
+        "faces": 0,
+        "position": null,
+        "type": null
+      },
+      "shelterModel": "CAOS ESTRUTURADO",
+      "observation": null,
+      "hasDigital": true,
+      "hasStatic": false,
+      "totalPanels": 1,
+      "Nº Eletro": "A01519"
+    }
+  ]
 }

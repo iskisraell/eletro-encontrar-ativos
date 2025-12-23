@@ -1,4 +1,4 @@
-import { ApiResponse, Equipment, SearchParams, RateLimitError, ApiLayer, PanelLayerRecord } from '../types';
+import { ApiResponse, Equipment, SearchParams, RateLimitError, ApiLayer, PanelLayerRecord, AbrigoAmigoRecord } from '../types';
 
 const API_BASE = "https://script.google.com/macros/s/AKfycbzXpzgaA64P147rIqeaLEkCZ4YQcz5rJOn89Ag8Pf3p8EIg0Beisa9dS0OL-UEOsIWL/exec";
 
@@ -232,4 +232,78 @@ export const fetchMainLayer = async (params: {
     ...params,
     layer: 'main' as ApiLayer
   });
+};
+
+/**
+ * Fetches Abrigo Amigo layer data from the API.
+ * Returns Abrigo Amigo partner information indexed by Nº Parada.
+ * 
+ * Abrigo Amigo data includes:
+ * - enabled: whether the Abrigo Amigo program is active
+ * - cliente: the client/partner (Claro, Governo, etc.)
+ * - paradaOriginal: original stop ID
+ * - Nº Parada: stop number for matching with equipment
+ */
+export const fetchAbrigoAmigoLayer = async (params: {
+  start?: number;
+  limit?: number;
+  q?: string;
+}): Promise<{
+  data: AbrigoAmigoRecord[];
+  total: number;
+  cached?: boolean;
+}> => {
+  const url = new URL(API_BASE);
+  
+  // Required: docs=false to get JSON data
+  url.searchParams.append('docs', 'false');
+  
+  // Set layer to abrigoamigo
+  url.searchParams.append('layer', 'abrigoamigo');
+  
+  // Pagination
+  if (params.start !== undefined) {
+    url.searchParams.append('start', params.start.toString());
+  }
+  if (params.limit !== undefined) {
+    url.searchParams.append('limit', params.limit.toString());
+  }
+  
+  // Search query
+  if (params.q) {
+    url.searchParams.append('q', params.q);
+  }
+
+  try {
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    // Handle error responses
+    if (result.status === 'error') {
+      if (result.code === 429) {
+        throw new RateLimitError(result.meta?.retryAfter || 60);
+      }
+      throw new Error(result.message || 'Erro desconhecido na API');
+    }
+
+    const total = result.meta?.total ?? result.total ?? 0;
+    const cached = result.meta?.cached;
+
+    return {
+      data: result.data || [],
+      total,
+      cached
+    };
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      throw error;
+    }
+    console.error("Failed to fetch Abrigo Amigo layer:", error);
+    throw error;
+  }
 };

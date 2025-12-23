@@ -1,9 +1,10 @@
 {
-  "apiVersion": "5.1.0",
+  "apiVersion": "5.2.0",
   "layers": [
     {
       "id": "main",
       "name": "Ativos Principais",
+      "description": null,
       "source": {
         "sheetId": "1e1cvseL1_S0Kyr-DFPa-tFsS2rVGZ7qqvBku51jhmbE",
         "tab": "Pontos não SEP"
@@ -16,9 +17,10 @@
     {
       "id": "panels",
       "name": "Painéis",
+      "description": null,
       "source": {
         "sheetId": "19aG4aS4iH42vbVwi6JJ9aKuhYQmXQ2fMcOSRWl7ochY",
-        "tab": "Pontos não SEP"
+        "tab": "Pontos não SEP "
       },
       "joinKey": "Nº Eletro",
       "secondaryJoinKey": "Nº Parada",
@@ -26,24 +28,41 @@
       "isDefault": false
     },
     {
+      "id": "abrigoamigo",
+      "name": "Abrigo Amigo",
+      "description": "Women's safety initiative - interactive safety hubs at bus stops (8PM-5AM)",
+      "source": {
+        "sheetId": "1p6V16c0iZDAgL-zrlHjlfH4FwuucvbEf9miVylfhWVE",
+        "tab": "ABRIGO AMIGO"
+      },
+      "joinKey": "Nº PARADA",
+      "secondaryJoinKey": null,
+      "cacheDuration": 600,
+      "isDefault": false
+    },
+    {
       "id": "full",
-      "name": "Dados Completos (Main + Panels)",
+      "name": "Dados Completos (Main + Panels + Abrigo Amigo)",
       "type": "merged",
-      "merges": ["main", "panels"],
-      "joinKey": "Nº Eletro"
+      "merges": ["main", "panels", "abrigoamigo"],
+      "joinKeys": {
+        "panels": "Nº Eletro",
+        "abrigoamigo": "Nº Parada"
+      }
     },
     {
       "id": "summary",
-      "name": "Resumo com Contagem de Painéis",
+      "name": "Resumo com Contagem de Painéis e Abrigo Amigo",
       "type": "aggregated",
       "base": "main",
-      "enrichedWith": ["panels"]
+      "enrichedWith": ["panels", "abrigoamigo"]
     }
   ],
   "defaultLayer": "main",
   "availableFilters": {
     "main": ["status", "cidade", "estado", "bairro", "area", "praca", "filial"],
     "panels": ["hasDigital", "hasStatic", "modelo"],
+    "abrigoamigo": ["cliente"],
     "full": [
       "status",
       "cidade",
@@ -54,7 +73,9 @@
       "filial",
       "hasDigital",
       "hasStatic",
-      "modelo"
+      "modelo",
+      "abrigoAmigo",
+      "cliente"
     ],
     "summary": [
       "status",
@@ -66,7 +87,9 @@
       "filial",
       "hasDigital",
       "hasStatic",
-      "modelo"
+      "modelo",
+      "abrigoAmigo",
+      "cliente"
     ]
   },
   "meta": {

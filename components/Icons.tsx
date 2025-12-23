@@ -16,7 +16,8 @@ import {
   Smartphone,
   Box,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Heart
 } from 'lucide-react';
 
 export const SearchIcon = ({ className }: { className?: string }) => <Search className={className} />;
@@ -36,3 +37,4 @@ export const DigitalIcon = ({ className }: { className?: string }) => <Smartphon
 export const BoxIcon = ({ className }: { className?: string }) => <Box className={className} />;
 export const CheckIcon = ({ className }: { className?: string }) => <CheckCircle2 className={className} />;
 export const ExternalLinkIcon = ({ className }: { className?: string }) => <ExternalLink className={className} />;
+export const HeartIcon = ({ className }: { className?: string }) => <Heart className={className} />;

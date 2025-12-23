@@ -1,9 +1,19 @@
-﻿{
-    "apiVersion":  "5.0.0",
-    "layer":  "main",
-    "count":  10,
-    "total":  22038,
-    "cached":  false,
-    "cacheExpires":  "2025-12-16T13:23:57.596Z",
-    "executionTimeMs":  731
+{
+  "apiVersion": "5.2.0",
+  "lastUpdated": "2025-12-23",
+  "documentation": "https://script.google.com/macros/s/AKfycbzXpzgaA64P147rIqeaLEkCZ4YQcz5rJOn89Ag8Pf3p8EIg0Beisa9dS0OL-UEOsIWL/exec",
+  "features": [
+    "Multi-layer data mesh",
+    "Panels enrichment layer",
+    "Abrigo Amigo safety initiative layer",
+    "Digital panel brand/model data",
+    "Meta introspection",
+    "Caching (5-10 min)",
+    "Geospatial queries",
+    "Sparse fieldsets",
+    "Rate limiting"
+  ],
+  "meta": {
+    "executionTimeMs": 0
+  }
 }

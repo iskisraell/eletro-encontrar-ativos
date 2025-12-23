@@ -1,13 +1,13 @@
 {
   "status": "success",
   "meta": {
-    "apiVersion": "5.1.0",
+    "apiVersion": "5.2.0",
     "layer": "full",
     "count": 3,
     "total": 3,
-    "cached": true,
-    "cacheExpires": "2025-12-20T18:59:51.424Z",
-    "executionTimeMs": 547
+    "cached": false,
+    "cacheExpires": "2025-12-23T15:15:29.631Z",
+    "executionTimeMs": 2447
   },
   "links": {
     "self": "?start=0&limit=3",
@@ -37,24 +37,32 @@
       "Filial": "Matriz",
       "Área de Risco": "-",
       "Modelo de Abrigo": "-",
-      "Tipo de Adesivo": "-",
-      "Tipo de Piso": "-",
-      "Energizado": "-",
-      "Luminária": "-",
-      "Abrigo Amigo": "-",
-      "Wi-Fi": "-",
-      "Câmera": "-",
-      "Altura do Totem": "-",
-      "Painel Digital": "-",
-      "Painel Digital - Tipo": "-",
-      "Painel Digital - Posição": "-",
-      "Painel Estático": "-",
-      "Painel Estático - Tipo": "-",
-      "Painel Estático - Posição": "-",
       "Link Operações": "https://operacoes.eletromidia.com.br/places/64720",
-      "Foto Referência": "",
-      "Observações": "",
-      "panels": null
+      "panels": {
+        "digital": {
+          "boxes": 1,
+          "faces": 1,
+          "position": "180°",
+          "type": "SIMPLES",
+          "brand": "BOE (AA)"
+        },
+        "static": {
+          "boxes": 0,
+          "faces": 0,
+          "position": null,
+          "type": null
+        },
+        "shelterModel": "PRMEIRO ABRIGO DE SP",
+        "observation": null,
+        "hasDigital": true,
+        "hasStatic": false,
+        "totalPanels": 1
+      },
+      "abrigoAmigo": {
+        "enabled": true,
+        "cliente": "Claro",
+        "paradaOriginal": "480014794"
+      }
     },
     {
       "Nº Eletro": "A08997",
@@ -76,24 +84,32 @@
       "Filial": "Matriz",
       "Área de Risco": "-",
       "Modelo de Abrigo": "-",
-      "Tipo de Adesivo": "-",
-      "Tipo de Piso": "-",
-      "Energizado": "-",
-      "Luminária": "-",
-      "Abrigo Amigo": "-",
-      "Wi-Fi": "-",
-      "Câmera": "-",
-      "Altura do Totem": "-",
-      "Painel Digital": "-",
-      "Painel Digital - Tipo": "-",
-      "Painel Digital - Posição": "-",
-      "Painel Estático": "-",
-      "Painel Estático - Tipo": "-",
-      "Painel Estático - Posição": "-",
       "Link Operações": "https://operacoes.eletromidia.com.br/places/64721",
-      "Foto Referência": "https://operacoes.eletromidia.com.br/storage/places/photos/a08997.jpeg",
-      "Observações": "",
-      "panels": null
+      "panels": {
+        "digital": {
+          "boxes": 0,
+          "faces": 0,
+          "position": null,
+          "type": null,
+          "brand": null
+        },
+        "static": {
+          "boxes": 0,
+          "faces": 0,
+          "position": null,
+          "type": null
+        },
+        "shelterModel": null,
+        "observation": null,
+        "hasDigital": false,
+        "hasStatic": false,
+        "totalPanels": 0
+      },
+      "abrigoAmigo": {
+        "enabled": true,
+        "cliente": "Claro",
+        "paradaOriginal": "630014684"
+      }
     },
     {
       "Nº Eletro": "A08998",
@@ -115,45 +131,33 @@
       "Filial": "Sul",
       "Área de Risco": "-",
       "Modelo de Abrigo": "-",
-      "Tipo de Adesivo": "-",
-      "Tipo de Piso": "-",
-      "Energizado": "-",
-      "Luminária": "-",
-      "Abrigo Amigo": "-",
-      "Wi-Fi": "-",
-      "Câmera": "-",
-      "Altura do Totem": "-",
-      "Painel Digital": "-",
-      "Painel Digital - Tipo": "-",
-      "Painel Digital - Posição": "-",
-      "Painel Estático": "-",
-      "Painel Estático - Tipo": "-",
-      "Painel Estático - Posição": "-",
       "Link Operações": "https://operacoes.eletromidia.com.br/places/64722",
-      "Foto Referência": "https://operacoes.eletromidia.com.br/storage/places/photos/a08998.jpeg",
-      "Observações": "",
-      "panels": null
+      "panels": {
+        "digital": {
+          "boxes": 1,
+          "faces": 1,
+          "position": "45°",
+          "type": "SIMPLES",
+          "brand": "BOE (AA)"
+        },
+        "static": {
+          "boxes": 0,
+          "faces": 0,
+          "position": null,
+          "type": null
+        },
+        "shelterModel": null,
+        "observation": null,
+        "hasDigital": true,
+        "hasStatic": false,
+        "totalPanels": 1
+      },
+      "abrigoAmigo": {
+        "enabled": true,
+        "cliente": "Claro",
+        "paradaOriginal": "3406947"
+      }
     }
   ],
-  "_note": "When panels data is available for a record, the 'panels' field contains:",
-  "_examplePanels": {
-    "digital": {
-      "boxes": 1,
-      "faces": 1,
-      "position": "90°",
-      "type": "SIMPLES",
-      "brand": "BOE/DD"
-    },
-    "static": {
-      "boxes": 1,
-      "faces": 1,
-      "position": "180°",
-      "type": "SIMPLES"
-    },
-    "shelterModel": "CAOS LEVE",
-    "observation": null,
-    "hasDigital": true,
-    "hasStatic": true,
-    "totalPanels": 2
-  }
+  "_note": "Full layer includes main data with nested 'panels' and 'abrigoAmigo' objects. Query with ?abrigoAmigo=true to filter only Abrigo Amigo equipped stops."
 }

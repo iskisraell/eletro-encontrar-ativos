@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Equipment, MergedEquipment, PanelLayerRecord } from '../types';
-import { MapPinIcon, DigitalIcon } from './Icons';
+import { Equipment, MergedEquipment, PanelLayerRecord, AbrigoAmigoRecord } from '../types';
+import { MapPinIcon, DigitalIcon, HeartIcon } from './Icons';
 import { spring } from '../lib/animations';
 import placeholderImg from '../assets/placeholder.jpg';
 
@@ -14,6 +14,19 @@ interface EquipmentCardProps {
 // Helper to check if item has panel data
 const hasPanelData = (item: Equipment | MergedEquipment): item is MergedEquipment & { _panelData: PanelLayerRecord } => {
   return '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item && item._panelData !== undefined;
+};
+
+// Helper to check if item has Abrigo Amigo data
+const hasAbrigoAmigoData = (item: Equipment | MergedEquipment): item is MergedEquipment & { _abrigoAmigoData: AbrigoAmigoRecord } => {
+  return '_hasAbrigoAmigo' in item && item._hasAbrigoAmigo === true && '_abrigoAmigoData' in item && item._abrigoAmigoData !== undefined;
+};
+
+// Get Abrigo Amigo badge color based on client
+const getAbrigoAmigoColor = (cliente: string | undefined): string => {
+  const normalizedClient = cliente?.toLowerCase().trim();
+  if (normalizedClient === 'claro') return '#dc3545'; // Red for Claro
+  if (normalizedClient === 'governo') return '#31b11c'; // Green for Governo
+  return '#6b7280'; // Gray fallback
 };
 
 const EquipmentCardComponent: React.FC<EquipmentCardProps> = ({ item, onClick, index = 0 }) => {
@@ -55,18 +68,32 @@ const EquipmentCardComponent: React.FC<EquipmentCardProps> = ({ item, onClick, i
           {id}
         </div>
         
-        {/* Panel Badge - Shows when equipment has panel data */}
-        {hasPanelData(item) && item._panelData.totalPanels > 0 && (
-          <div className="absolute top-3 right-3 flex items-center gap-1 bg-purple-600/90 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md">
-            <DigitalIcon className="w-3 h-3" />
-            <span>{item._panelData.totalPanels}</span>
-            {item._panelData.digital?.brand && (
-              <span className="text-purple-200 ml-1 border-l border-purple-400/50 pl-1.5">
-                {item._panelData.digital.brand.split('/')[0]}
-              </span>
-            )}
-          </div>
-        )}
+        {/* Badges container - Panel and Abrigo Amigo */}
+        <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
+          {/* Abrigo Amigo Badge - Shows when equipment is in Abrigo Amigo program */}
+          {hasAbrigoAmigoData(item) && item._abrigoAmigoData.enabled && (
+            <div 
+              className="flex items-center gap-1 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md"
+              style={{ backgroundColor: getAbrigoAmigoColor(item._abrigoAmigoData.cliente) }}
+            >
+              <HeartIcon className="w-3 h-3 fill-current" />
+              <span>ABRIGO AMIGO</span>
+            </div>
+          )}
+          
+          {/* Panel Badge - Shows when equipment has panel data */}
+          {hasPanelData(item) && item._panelData.totalPanels > 0 && (
+            <div className="flex items-center gap-1 bg-purple-600/90 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md">
+              <DigitalIcon className="w-3 h-3" />
+              <span>{item._panelData.totalPanels}</span>
+              {item._panelData.digital?.brand && (
+                <span className="text-purple-200 ml-1 border-l border-purple-400/50 pl-1.5">
+                  {item._panelData.digital.brand.split('/')[0]}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="p-5 flex flex-col flex-grow">

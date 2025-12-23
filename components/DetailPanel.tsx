@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Equipment, MergedEquipment, PanelLayerRecord, DigitalPanelDetails, PanelDetails } from '../types';
-import { CloseIcon, MapPinIcon, InfoIcon, MaximizeIcon, TagIcon, WifiIcon, CameraIcon, DigitalIcon, ZapIcon, CalendarIcon, BoxIcon, CheckIcon, ExternalLinkIcon } from './Icons';
+import { Equipment, MergedEquipment, PanelLayerRecord, DigitalPanelDetails, PanelDetails, AbrigoAmigoRecord } from '../types';
+import { CloseIcon, MapPinIcon, InfoIcon, MaximizeIcon, TagIcon, WifiIcon, CameraIcon, DigitalIcon, ZapIcon, CalendarIcon, BoxIcon, CheckIcon, ExternalLinkIcon, HeartIcon } from './Icons';
 import MapEmbed from './MapEmbed';
 import { spring } from '../lib/animations';
 import placeholderImg from '../assets/placeholder.jpg';
@@ -97,6 +97,20 @@ const staggerItem = {
 const hasPanelData = (item: Equipment | MergedEquipment | null): item is MergedEquipment & { _panelData: PanelLayerRecord } => {
   if (!item) return false;
   return '_hasPanelData' in item && item._hasPanelData === true && '_panelData' in item && item._panelData !== undefined;
+};
+
+// Helper to check if item has Abrigo Amigo data
+const hasAbrigoAmigoData = (item: Equipment | MergedEquipment | null): item is MergedEquipment & { _abrigoAmigoData: AbrigoAmigoRecord } => {
+  if (!item) return false;
+  return '_hasAbrigoAmigo' in item && item._hasAbrigoAmigo === true && '_abrigoAmigoData' in item && item._abrigoAmigoData !== undefined;
+};
+
+// Get Abrigo Amigo badge color based on client
+const getAbrigoAmigoColor = (cliente: string | undefined): string => {
+  const normalizedClient = cliente?.toLowerCase().trim();
+  if (normalizedClient === 'claro') return '#dc3545'; // Red for Claro
+  if (normalizedClient === 'governo') return '#31b11c'; // Green for Governo
+  return '#6b7280'; // Gray fallback
 };
 
 // Panel stat card component - refined design
@@ -324,7 +338,7 @@ const DetailPanelComponent: React.FC<DetailPanelProps> = ({ item, onClose }) => 
                 {/* Hero Content */}
                 <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
                   {/* Badges */}
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <motion.div 
                       className="px-3 py-1.5 bg-eletro-orange rounded-lg font-bold text-sm tracking-wide shadow-lg shadow-eletro-orange/30"
                       initial={{ opacity: 0, scale: 0.8 }}
@@ -333,6 +347,19 @@ const DetailPanelComponent: React.FC<DetailPanelProps> = ({ item, onClose }) => 
                     >
                       {id}
                     </motion.div>
+                    {hasAbrigoAmigoData(item) && item._abrigoAmigoData.enabled && (
+                      <motion.div 
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold uppercase tracking-wide shadow-lg"
+                        style={{ backgroundColor: getAbrigoAmigoColor(item._abrigoAmigoData.cliente) }}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.12 }}
+                      >
+                        <HeartIcon className="w-3.5 h-3.5 fill-current" />
+                        <span>Abrigo Amigo</span>
+                        <span className="text-xs opacity-80 ml-0.5">({item._abrigoAmigoData.cliente})</span>
+                      </motion.div>
+                    )}
                     {item["Status"] && item["Status"] !== "-" && (
                       <motion.div 
                         className={cn(
@@ -352,13 +379,25 @@ const DetailPanelComponent: React.FC<DetailPanelProps> = ({ item, onClose }) => 
                   
                   {/* Title */}
                   <motion.h2 
-                    className="text-3xl font-bold tracking-tight mb-2"
+                    className="text-3xl font-bold tracking-tight mb-1"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
                   >
                     {modelName}
                   </motion.h2>
+                  
+                  {/* Screen Model - if available */}
+                  {item["Modelo"] && item["Modelo"] !== modelName && item["Modelo"] !== "-" && (
+                    <motion.div 
+                      className="text-white/70 text-sm font-medium mb-2"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.22 }}
+                    >
+                      {item["Modelo"]}
+                    </motion.div>
+                  )}
                   
                   {/* Address */}
                   {address && (

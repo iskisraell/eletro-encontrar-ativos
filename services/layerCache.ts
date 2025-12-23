@@ -1,17 +1,18 @@
-import { Equipment, PanelLayerRecord } from '../types';
+import { Equipment, PanelLayerRecord, AbrigoAmigoRecord } from '../types';
 
 const DB_NAME = 'EletroLayersDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;  // Incremented for Abrigo Amigo store
 
 // Object store names
 const MAIN_STORE = 'main_layer';
 const PANELS_STORE = 'panels_layer';
+const ABRIGOAMIGO_STORE = 'abrigoamigo_layer';
 const META_STORE = 'layer_meta';
 
 // Cache duration: 24 hours
 const CACHE_DURATION_MS = 1000 * 60 * 60 * 24;
 
-type LayerType = 'main' | 'panels';
+type LayerType = 'main' | 'panels' | 'abrigoamigo';
 
 /**
  * Layer-based IndexedDB cache service.
@@ -39,6 +40,11 @@ export const layerCache = {
         // Create panels layer store (keyed by Nº Eletro)
         if (!db.objectStoreNames.contains(PANELS_STORE)) {
           db.createObjectStore(PANELS_STORE);
+        }
+
+        // Create Abrigo Amigo layer store (keyed by Nº Parada)
+        if (!db.objectStoreNames.contains(ABRIGOAMIGO_STORE)) {
+          db.createObjectStore(ABRIGOAMIGO_STORE);
         }
 
         // Create meta store for timestamps and sync status
@@ -304,6 +310,119 @@ export const layerCache = {
     });
   },
 
+  // ========== ABRIGO AMIGO LAYER OPERATIONS ==========
+
+  /**
+   * Save a chunk of Abrigo Amigo layer data.
+   * Keyed by Nº Parada for matching with equipment.
+   */
+  async saveAbrigoAmigoChunk(data: AbrigoAmigoRecord[]): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ABRIGOAMIGO_STORE, 'readwrite');
+      const store = transaction.objectStore(ABRIGOAMIGO_STORE);
+
+      data.forEach(item => {
+        if (item["Nº Parada"]) {
+          store.put(item, item["Nº Parada"]);
+        }
+      });
+
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        db.close();
+        reject(transaction.error);
+      };
+    });
+  },
+
+  /**
+   * Get all Abrigo Amigo layer data.
+   */
+  async getAllAbrigoAmigo(): Promise<AbrigoAmigoRecord[]> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ABRIGOAMIGO_STORE, 'readonly');
+      const store = transaction.objectStore(ABRIGOAMIGO_STORE);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        db.close();
+        reject(request.error);
+      };
+    });
+  },
+
+  /**
+   * Get a single Abrigo Amigo record by Nº Parada.
+   */
+  async getAbrigoAmigoByParada(paradaId: string): Promise<AbrigoAmigoRecord | undefined> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ABRIGOAMIGO_STORE, 'readonly');
+      const store = transaction.objectStore(ABRIGOAMIGO_STORE);
+      const request = store.get(paradaId);
+
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        db.close();
+        reject(request.error);
+      };
+    });
+  },
+
+  /**
+   * Get Abrigo Amigo layer record count.
+   */
+  async getAbrigoAmigoCount(): Promise<number> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ABRIGOAMIGO_STORE, 'readonly');
+      const store = transaction.objectStore(ABRIGOAMIGO_STORE);
+      const request = store.count();
+
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        db.close();
+        reject(request.error);
+      };
+    });
+  },
+
+  /**
+   * Clear Abrigo Amigo layer store.
+   */
+  async clearAbrigoAmigo(): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(ABRIGOAMIGO_STORE, 'readwrite');
+      const store = transaction.objectStore(ABRIGOAMIGO_STORE);
+      const request = store.clear();
+
+      request.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      request.onerror = () => {
+        db.close();
+        reject(request.error);
+      };
+    });
+  },
+
   // ========== META OPERATIONS ==========
 
   /**
@@ -369,9 +488,14 @@ export const layerCache = {
     ageMs: number;
   }> {
     const timestamp = await this.getLayerTimestamp(layer);
-    const count = layer === 'main' 
-      ? await this.getMainCount() 
-      : await this.getPanelsCount();
+    let count: number;
+    if (layer === 'main') {
+      count = await this.getMainCount();
+    } else if (layer === 'panels') {
+      count = await this.getPanelsCount();
+    } else {
+      count = await this.getAbrigoAmigoCount();
+    }
     const ageMs = timestamp ? Date.now() - timestamp : Infinity;
     const isStale = ageMs > CACHE_DURATION_MS;
 
@@ -387,12 +511,13 @@ export const layerCache = {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(
-        [MAIN_STORE, PANELS_STORE, META_STORE],
+        [MAIN_STORE, PANELS_STORE, ABRIGOAMIGO_STORE, META_STORE],
         'readwrite'
       );
 
       transaction.objectStore(MAIN_STORE).clear();
       transaction.objectStore(PANELS_STORE).clear();
+      transaction.objectStore(ABRIGOAMIGO_STORE).clear();
       transaction.objectStore(META_STORE).clear();
 
       transaction.oncomplete = () => {
@@ -412,8 +537,10 @@ export const layerCache = {
   async clearLayer(layer: LayerType): Promise<void> {
     if (layer === 'main') {
       await this.clearMain();
-    } else {
+    } else if (layer === 'panels') {
       await this.clearPanels();
+    } else {
+      await this.clearAbrigoAmigo();
     }
 
     const db = await this.getDB();
